@@ -2,7 +2,6 @@ import base64
 from pathlib import Path
 
 import streamlit as st
-from streamlit_mermaid import st_mermaid
 
 from agent import agent, set_trace_callback
 
@@ -47,7 +46,7 @@ def render_processing_indicator():
 def render_agent_steps():
     if not st.session_state.agent_steps:
         st.markdown(
-            """<p class="abb-memory-empty">No steps yet.</p>""",
+            """<p class="abb-panel-empty">No steps yet.</p>""",
             unsafe_allow_html=True,
         )
         return
@@ -318,34 +317,22 @@ st.markdown(
             margin-top: 0.32rem;
         }
 
-        .abb-memory {
+        .abb-panel {
             margin-top: 0;
             padding-top: 0;
         }
 
-        .abb-memory h3 {
+        .abb-panel h3 {
             margin: 0 0 0.45rem;
             font-size: 0.92rem;
             letter-spacing: 0;
         }
 
-        .abb-memory-list {
-            margin: 0.55rem 0 0;
-            padding-left: 1rem;
-            color: var(--muted);
-            font-size: 0.8rem;
-            line-height: 1.4;
-        }
-
-        .abb-memory-empty {
+        .abb-panel-empty {
             color: var(--muted);
             font-size: 0.8rem;
             line-height: 1.4;
             margin: 0.45rem 0 0;
-        }
-
-        .abb-memory-actions {
-            margin-top: 0.55rem;
         }
 
         .abb-chat-header {
@@ -443,28 +430,6 @@ st.markdown(
             font-size: 0.76rem;
             text-align: right;
         }
-
-        .abb-architecture {
-            margin-top: 1rem;
-            padding: 1rem;
-            background: #ffffff;
-            border: 1px solid var(--line);
-            border-radius: 8px;
-            box-shadow: 0 10px 28px rgba(16, 24, 40, 0.06);
-        }
-
-        .abb-architecture h3 {
-            margin: 0;
-            font-size: 1rem;
-            letter-spacing: 0;
-        }
-
-        .abb-architecture p {
-            margin: 0.3rem 0 0.9rem;
-            color: var(--muted);
-            font-size: 0.82rem;
-        }
-
 
         div[data-testid="stVerticalBlockBorderWrapper"] {
             background: #ffffff;
@@ -647,41 +612,10 @@ with left:
     )
 
 with right:
-    memories = agent.load_memories()
     with st.container(border=True):
         st.markdown(
             """
-            <div class="abb-memory">
-                <p class="abb-eyebrow">Memory</p>
-                <h3>Long-term memory</h3>
-                <p class="abb-microcopy">Reusable user facts and preferences captured during the session.</p>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-        if memories:
-            st.markdown("\n".join(f"- {memory}" for memory in memories))
-        else:
-            st.markdown(
-                """<p class="abb-memory-empty">No memories captured yet.</p>""",
-                unsafe_allow_html=True,
-            )
-        if st.button("Clear memory", use_container_width=True):
-            agent.clear_memories()
-            st.rerun()
-        st.markdown(
-            """
-            <div class="abb-divider"></div>
-            <p class="abb-footnote">
-                Memories are saved locally and can be cleared at any time.
-            </p>
-            """,
-            unsafe_allow_html=True,
-        )
-    with st.container(border=True):
-        st.markdown(
-            """
-            <div class="abb-memory">
+            <div class="abb-panel">
                 <p class="abb-eyebrow">Live trace</p>
                 <h3>Assistant steps</h3>
             </div>
@@ -727,59 +661,6 @@ with center:
             f"""<p class="abb-chat-footer">{len(st.session_state.messages)} messages</p>""",
             unsafe_allow_html=True,
         )
-
-st.markdown(
-    """
-    <section class="abb-architecture">
-        <h3>Agent Architecture</h3>
-        <p>Temporary build view showing the assistant, tools, and internal text-to-SQL flow.</p>
-    </section>
-    """,
-    unsafe_allow_html=True,
-)
-
-st_mermaid(
-    """
-    flowchart LR
-        U["User"] --> APP["Streamlit UI"]
-        APP --> STM["Short-term memory<br/>Current conversation"]
-        APP --> LTM["Long-term memory<br/>Saved facts & preferences"]
-        STM --> A["assistant<br/>LangGraph ReAct node<br/>ChatOpenAI gpt-4.1<br/>llm.bind_tools"]
-        LTM --> A
-
-        A --> SQL["structured_data_tool<br/>3-table SQL tool"]
-        SQL --> ROUTER["Table routing LLM<br/>Forecast / Contribution / Monthly"]
-        ROUTER --> SQLLLM["SQL generation LLM<br/>selected schema only"]
-        SQLLLM --> DB["SQLite workbook DB<br/>3 tables"]
-        DB --> SQL
-
-        A --> TXT["unstructured_kpi_tool<br/>KPI definitions & synonyms"]
-        TXT --> TXTFILE["Full extracted text file<br/>KPI PDF"]
-        TXTFILE --> TXT
-
-        A --> PLOT["plot_tool<br/>Charts from prior messages"]
-        PLOT --> PMEM["Previous 10 messages<br/>data to plot"]
-        LTM --> PLOT
-
-        A --> CALC["simulation_tool<br/>ELSP / ELSB what-if"]
-
-        SQL --> A
-        TXT --> A
-        PLOT --> A
-        CALC --> A
-        A --> APP
-
-        classDef assistant fill:#fff6f6,stroke:#ff000f,stroke-width:2px,color:#101828;
-        classDef tool fill:#fbfcfd,stroke:#d9dde7,color:#101828;
-        classDef data fill:#f7f9fc,stroke:#98a2b3,color:#101828;
-        classDef ui fill:#ffffff,stroke:#d9dde7,color:#101828;
-        class A assistant;
-        class SQL,ROUTER,SQLLLM,TXT,PLOT,CALC tool;
-        class DB,TXTFILE,STM,LTM,PMEM data;
-        class U,APP ui;
-    """,
-    height=520,
-)
 
 prompt = st.chat_input("Message ABB Executive Assistant", disabled=is_processing)
 
