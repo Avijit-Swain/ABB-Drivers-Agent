@@ -723,50 +723,92 @@ PLOTTING_CODE_PROMPT = """
 You are a Python plotting code generator for a Driver Analysis Chatbot.
 
 Your job:
-Generate simple Python code to plot the data available in previous conversation messages.
+Generate executable Python code that plots data available in previous conversation messages.
 
 Inputs:
 1. Current user plot request
 2. Previous 10 conversation messages
 
-Chart rules:
-- Use line plot for chronological/monthly/quarterly/yearly/time-series data.
-- Use bar plot for categorical comparison, driver comparison, ranking, or scenario comparison.
-- Use horizontal bar plot when category names are long.
-- Use waterfall-style bar plot for contribution/impact/bridge/decomposition.
-- Use pie chart only for simple part-to-whole share with few categories.
-- If two time-series have very different scales, use dual-axis line plot with twinx().
-- If user explicitly asks for a chart type, follow it unless clearly unsuitable.
-
-Data rules:
-- Use only data available in previous messages.
+Important:
+- The previous messages may contain structured JSON results from tools.
+- The previous messages may also contain summarized assistant text with bullet lists.
+- Extract the data from the previous messages and manually create a pandas DataFrame in the generated code.
+- Do not assume external variables exist except pd and plt.
+- Do not read files.
+- Do not call APIs.
+- Do not fetch new data.
 - Do not invent values.
-- If no usable data is found, return status no_data_found.
-- Extract data into a pandas DataFrame inside the generated code.
-- Keep code simple and executable in Jupyter.
 
-Code rules:
-- Use pandas and matplotlib only.
-- Assume pandas is imported as pd and matplotlib.pyplot is imported as plt, or include imports.
-- The code must directly display the plot using plt.show().
-- Do not save the plot.
-- Do not read external files.
+Chart selection rules:
+- Use a line plot for chronological, monthly, quarterly, yearly, time-series, trend, or over-time data.
+- Use a dual-axis line plot with ax1.twinx() when two time-series are plotted together and their values are on very different scales.
+- Use a normal multi-line plot when two or more time-series have comparable scales.
+- Use a bar plot for categorical comparisons, driver comparisons, scenario comparisons, or rankings.
+- Use a horizontal bar plot when category labels are long.
+- Use a waterfall-style bar chart for contribution, bridge, decomposition, or impact breakdown.
+- Use a pie chart only for simple part-to-whole share questions with a small number of categories.
+- If the user explicitly asks for a chart type, follow that chart type unless it is clearly unsuitable.
+
+Follow-up plot requests:
+- If the user says "plot this", "plot this please", "chart this", "graph this", or "plot the above", use the most recent structured data or assistant-provided data from previous messages.
+- Do not ask the user to provide the data again if usable data exists in previous messages.
+
+Required code rules:
+- Return only JSON.
+- The JSON must contain executable Python code as a string.
+- The generated code must import pandas as pd and matplotlib.pyplot as plt.
+- The generated code must create a DataFrame explicitly from extracted data.
+- The generated code must create a figure using plt.figure(...) or plt.subplots(...).
+- The generated code must set a clear title.
+- The generated code must set clear axis labels.
+- The generated code must call plt.tight_layout().
+- The generated code must call plt.show() as the final plotting command.
+- Do not save the figure in generated code.
 - Do not use seaborn.
 - Do not use plotly.
-- Do not include markdown.
-- Return JSON only.
+- Do not use markdown.
+- Do not wrap code in triple backticks.
 
-If plot code can be generated:
+For dual-axis line plots:
+- Use fig, ax1 = plt.subplots(figsize=(10, 5)).
+- Use ax2 = ax1.twinx().
+- Plot the first series on ax1 and the second series on ax2.
+- Set both y-axis labels clearly.
+- Combine legends from both axes.
+- Call fig.autofmt_xdate(rotation=30).
+- Call plt.tight_layout().
+- Call plt.show().
+
+For normal line plots:
+- Convert date/month columns using pd.to_datetime when possible.
+- Sort by the date/month column.
+- Use markers for readability.
+- Rotate x-axis labels if needed.
+- Call plt.show().
+
+For bar plots:
+- Use plt.bar(...) or plt.barh(...).
+- Rotate labels if needed.
+- Call plt.show().
+
+Output format if plot code can be generated:
 {
   "status": "ready_to_plot",
-  "code": "python code as a string"
+  "code": "import pandas as pd\\nimport matplotlib.pyplot as plt\\n..."
 }
 
-If no usable data is available:
+Output format if no usable data exists:
 {
   "status": "no_data_found",
   "message": "No usable data found in previous messages for plotting."
 }
+
+Quality check before returning:
+- The code must be complete and runnable by exec().
+- The code must create and display exactly one chart.
+- The code must not reference undefined variables.
+- The code must not contain markdown or explanations.
+- The code must include plt.show().
 """
 
 
@@ -980,6 +1022,90 @@ def _run_generated_plot_code(code: str) -> dict:
     }
 
 
+def _generate_code_from_fallback_plan(plot_plan: dict) -> str:
+    """
+    Deterministically creates matplotlib code from cached structured rows.
+    This avoids relying on the LLM when the data is already available.
+    """
+
+    data = plot_plan.get("data", [])
+    chart_type = plot_plan.get("chart_type", "bar")
+    title = plot_plan.get("title", "Structured Data Plot")
+    x_column = plot_plan.get("x_column")
+    y_column = plot_plan.get("y_column")
+    x_label = plot_plan.get("x_label", x_column or "")
+    y_label = plot_plan.get("y_label", "Value")
+
+    # y_column can be a list for multi-series plots
+    if isinstance(y_column, list):
+        y_columns = y_column
+    else:
+        y_columns = [y_column]
+
+    return f"""
+import pandas as pd
+import matplotlib.pyplot as plt
+
+data = {json.dumps(data, default=str)}
+df = pd.DataFrame(data)
+
+x_column = {repr(x_column)}
+y_columns = {repr(y_columns)}
+chart_type = {repr(chart_type)}
+
+if x_column not in df.columns:
+    raise ValueError(f"Missing x column: {{x_column}}")
+
+for col in y_columns:
+    if col not in df.columns:
+        raise ValueError(f"Missing y column: {{col}}")
+    df[col] = pd.to_numeric(df[col], errors="coerce")
+
+if x_column == "date":
+    df[x_column] = pd.to_datetime(df[x_column], errors="coerce")
+    df = df.dropna(subset=[x_column]).sort_values(x_column)
+
+plt.figure(figsize=(10, 5))
+
+if chart_type == "line":
+    for col in y_columns:
+        plt.plot(df[x_column], df[col], marker="o", label=col.replace("_", " ").title())
+    plt.legend(loc="best")
+    plt.xticks(rotation=30, ha="right")
+
+elif chart_type == "horizontal_bar":
+    y_col = y_columns[0]
+    df = df.sort_values(y_col)
+    plt.barh(df[x_column].astype(str), df[y_col])
+
+elif chart_type == "waterfall":
+    y_col = y_columns[0]
+    df["start"] = df[y_col].cumsum().shift(fill_value=0)
+    plt.bar(df[x_column].astype(str), df[y_col], bottom=df["start"])
+    plt.axhline(0, linewidth=0.8)
+    plt.xticks(rotation=30, ha="right")
+
+elif chart_type == "pie":
+    y_col = y_columns[0]
+    plt.pie(df[y_col], labels=df[x_column].astype(str), autopct="%1.1f%%", startangle=90)
+    plt.axis("equal")
+
+else:
+    y_col = y_columns[0]
+    plt.bar(df[x_column].astype(str), df[y_col])
+    plt.xticks(rotation=30, ha="right")
+
+if chart_type != "pie":
+    plt.xlabel({repr(x_label)})
+    plt.ylabel({repr(y_label)})
+
+plt.title({repr(title)})
+plt.tight_layout()
+plt.show()
+"""
+
+
+
 @tool
 def plot_tool(plot_request: str, previous_messages: str) -> str:
     """Use only when the user explicitly asks for a plot, chart, graph, visual, or trend chart.
@@ -990,27 +1116,48 @@ def plot_tool(plot_request: str, previous_messages: str) -> str:
     definitions, simulations, or feedback capture.
     """
     try:
+        # 1. Try LLM-generated plotting code first
         plot_plan = _generate_plot_code(plot_request, previous_messages)
-        if plot_plan.get("status") == "no_data_found":
-            return json.dumps(plot_plan, indent=2)
 
-        code = plot_plan.get("code", "")
-        if not code.strip():
-            return json.dumps(
-                {"status": "error", "message": "No plotting code was generated."},
-                indent=2,
-            )
+        code = ""
+        if plot_plan.get("status") == "ready_to_plot":
+            code = plot_plan.get("code", "").strip()
 
-        result = _run_generated_plot_code(code)
+        # 2. If LLM did not generate usable code, fallback to cached structured data
+        if not code:
+            _emit_step("Plot fallback", "LLM did not generate usable plot code. Falling back to cached structured data.")
+            fallback_plan = _fallback_plot_plan_from_cache(plot_request)
+
+            if fallback_plan.get("status") == "no_data_found":
+                return json.dumps(fallback_plan, indent=2)
+
+            code = _generate_code_from_fallback_plan(fallback_plan)
+
+        # 3. Run code. If running LLM code fails, fallback once more.
+        try:
+            result = _run_generated_plot_code(code)
+        except Exception:
+            _emit_step("Plot fallback", "Generated plot code failed. Falling back to deterministic plot code.")
+            fallback_plan = _fallback_plot_plan_from_cache(plot_request)
+
+            if fallback_plan.get("status") == "no_data_found":
+                return json.dumps(fallback_plan, indent=2)
+
+            code = _generate_code_from_fallback_plan(fallback_plan)
+            result = _run_generated_plot_code(code)
+
         if result.get("status") != "plot_displayed_successfully":
             return json.dumps(result, indent=2, default=str)
+
         return (
             f"Plot generated at: {result['plot_path']}\n"
             f"Latest plot copy: {result['latest_plot_path']}\n"
             "Plot displayed successfully."
         )
+
     except Exception as exc:
         return json.dumps({"status": "error", "message": str(exc)}, indent=2)
+    
 
 
 TOOLS = [
@@ -1027,8 +1174,8 @@ def _conversation_context(history, user_message):
     for message in recent_messages:
         role = message.get("role", "unknown")
         content = message.get("content", "").replace("\n", " ").strip()
-        if len(content) > 1200:
-            content = f"{content[:1200]}..."
+        if len(content) > 4000:
+            content = f"{content[:4000]}..."
         lines.append(f"{role}: {content}")
     lines.append(f"user: {user_message}")
     return "\n".join(lines)
@@ -1131,14 +1278,13 @@ Important routing rules:
 - Do not invent values. If data is needed, call the correct tool.
 
 Time-series response rules:
-- For monthly or time-series data, do not list every single data point in the final answer by default.
-- Instead, provide useful insights such as:
+- For monthly or time-series data, list few data points in the final answer if there are a lot of datapoints by default .
+- Also, provide useful insights such as:
   - starting value and ending value
   - overall direction or trend
   - highest and lowest points if relevant
   - notable jumps, dips, or changes
   - comparison between two series if relevant
-- Mention that the full data has been retrieved and is available for plotting or further analysis.
 - If the user explicitly asks to show the full raw data, then show the full data.
 - If the user asks to plot after a time-series result, call plot_tool using the previous messages.
 
