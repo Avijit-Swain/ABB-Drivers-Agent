@@ -1,0 +1,16 @@
+ABB Assistant FAQ
+
+Q: What is this prototype for?
+A: This prototype validates an executive-facing assistant experience for ABB-style structured data, small text knowledge, plotting, and calculations.
+
+Q: What table is available?
+A: The local SQLite database contains an orders table with customer, region, product line, quantity, unit price, discount rate, revenue, delivery status, and satisfaction score.
+
+Q: How should leadership use it?
+A: Leadership can test natural language questions about sample commercial and operational data before the assistant is connected to real systems.
+
+Q: What is echo mode?
+A: Echo mode keeps the visible app behavior simple by returning the user's message while backend tools are being developed and tested.
+
+Q: What will be added next?
+A: The next iteration will connect the assistant node to real tool-calling logic, richer SQL generation, chart rendering, validated calculations, and human clarification handling.

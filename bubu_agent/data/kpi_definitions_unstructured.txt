@@ -1,0 +1,162 @@
+--- Page 1 ---
+KPI Definitions - Driver Analysis Chatbot Knowledge Base
+Page 1
+ KPI Definitions for Driver Analysis Chatbot
+Purpose
+This PDF is the unstructured KPI-definition source for the Driver Analysis Chatbot. Use it when the user asks what a KPI
+means, gives a misspelled KPI name, or describes a KPI indirectly. For selected drivers, elasticities, ranges, forecasts,
+contribution, and historical trends, use the structured Excel knowledge base.
+Recommended lookup behavior
+First search by exact KPI name. If no exact match is found, use fuzzy matching and synonyms. If the user describes the
+concept, use semantic search over the definition and business meaning. When confidence is low, ask a confirmation
+question such as: "Did you mean Consumer Price Index?"
+Data Center / Hyperscaler
+Category
+Sector demand indicator
+Definition
+Measures demand, investment, or activity related to data centers and hyperscale infrastructure.
+Business meaning
+Higher data center activity may indicate stronger electrification, power, grid, automation, and
+infrastructure demand. In the demo, this is treated as a selected driver for ELSP.
+Possible synonyms /
+user terms
+hyperscaler, data center growth, cloud infra, server infrastructure, AI data center demand
+US GDP
+Category
+Macro indicator
+Definition
+Gross Domestic Product of the United States. It measures the total economic output of the US economy.
+Business meaning
+Higher GDP generally indicates stronger economic activity and can support business demand. Users may
+ask this as US economy, macro growth, or economic output.
+Possible synonyms /
+user terms
+US economy, economic growth, GDP growth, macro growth, output of US economy
+China GDP
+Category
+Macro indicator
+Definition
+Gross Domestic Product of China. It measures the total economic output of China.
+Business meaning
+Higher China GDP can indicate stronger economic activity and broader demand conditions in China.
+Possible synonyms /
+user terms
+China economy, Chinese growth, macro growth China, China output
+China IIP
+Category
+Industrial indicator
+Definition
+Index of Industrial Production for China. It measures changes in industrial output such as manufacturing,
+mining, and utilities.
+Business meaning
+Higher IIP indicates stronger industrial activity and may increase demand for industrial products.
+Possible synonyms /
+user terms
+China industrial production, manufacturing output, industrial activity, China factory output
+US Computer Products
+Category
+Sector/manufacturing indicator
+Definition
+Measures manufacturing activity for computer, electronic, and optical products in the US.
+
+--- Page 2 ---
+KPI Definitions - Driver Analysis Chatbot Knowledge Base
+Page 2
+Business meaning
+This can reflect technology and electronics manufacturing demand, which may be linked to relevant
+divisions and product portfolios.
+Possible synonyms /
+user terms
+electronics manufacturing, computer products, tech manufacturing, optical products
+US Capacity
+Category
+Industrial capacity indicator
+Definition
+Measures capacity utilization or production capacity in the US industrial sector.
+Business meaning
+Higher capacity usage can indicate stronger industrial demand, investment activity, and production
+pressure.
+Possible synonyms /
+user terms
+capacity utilization, production capacity, industrial capacity, US factory capacity
+US Utility Capex
+Category
+Infrastructure investment indicator
+Definition
+Capital expenditure by utility companies in the US.
+Business meaning
+Higher utility capex may indicate more investment in power infrastructure, grid expansion, and
+electrification projects.
+Possible synonyms /
+user terms
+utility investment, power capex, grid investment, utility spending, infrastructure spend
+Europe Producer Price Index
+Category
+Price/inflation indicator
+Definition
+Measures changes in prices received by producers for goods and services in Europe.
+Business meaning
+It reflects producer-level inflation and cost pressure, which may influence demand, pricing, and
+investment decisions.
+Possible synonyms /
+user terms
+Europe PPI, producer prices, industrial inflation, price index, producer-level prices
+Copper Price
+Category
+Commodity indicator
+Definition
+Market price of copper. Copper is a key industrial metal used in electrical equipment, cables, and
+infrastructure.
+Business meaning
+Copper price can reflect commodity cost pressure as well as industrial demand conditions. A higher price
+may create cost pressure in some contexts.
+Possible synonyms /
+user terms
+copper, copper commodity, metal price, copper index, copper inflation
+Iron Price
+Category
+Commodity indicator
+Definition
+Market price of iron or iron ore, a key input for steel and construction-related industries.
+Business meaning
+Iron price can reflect raw material cost pressure and construction or industrial demand.
+Possible synonyms /
+user terms
+iron ore, iron commodity, steel input price, metal price
+Iron & Steel PPI
+Category
+Producer price indicator
+
+--- Page 3 ---
+KPI Definitions - Driver Analysis Chatbot Knowledge Base
+Page 3
+Definition
+Producer Price Index for iron and steel products.
+Business meaning
+It measures price movements in iron and steel products and can indicate input cost pressure for industrial
+sectors.
+Possible synonyms /
+user terms
+steel price index, iron steel inflation, metal PPI, iron and steel prices
+Operational Sales Expenses
+Category
+Internal business indicator
+Definition
+Sales-related operating expenses incurred by the business.
+Business meaning
+It may reflect commercial activity, market expansion, sales push, or internal investment in demand
+generation.
+Possible synonyms /
+user terms
+sales expense, selling cost, commercial expense, operational sales cost
+China Mining of Coal and Lignite
+Category
+Sector activity indicator
+Definition
+Measures mining activity related to coal and lignite in China.
+Business meaning
+It may reflect energy and heavy industrial activity, especially for sectors linked to power, mining, and
+infrastructure.
+Possible synonyms /
+user terms
+China coal mining, mining activity, coal output, lignite mining, coal and lignite

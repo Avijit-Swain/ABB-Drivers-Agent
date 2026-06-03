@@ -1,0 +1,1193 @@
+{
+  "source_workbook": "/Users/avijit_swain/Downloads/driver_analysis_chatbot_kb_static_v2.xlsx",
+  "local_workbook": "/Users/avijit_swain/Documents/New project/bubu_agent/data/driver_analysis_chatbot_kb_static_v2.xlsx",
+  "database": "/Users/avijit_swain/Documents/New project/bubu_agent/data/driver_analysis_workbook.db",
+  "agent_guidance": {
+    "purpose": "Static knowledge base for the Driver Analysis chatbot. It stores division-level order data, selected drivers, elasticities, scenario ranges, KPI definitions, contribution values, and reference forecasts.",
+    "important_principle": "The workbook stores facts and reference values. It is not a calculation engine. Custom scenario planning must be calculated in Python using alpha + SUM(elasticity * driver_growth_pct).",
+    "supported_divisions": [
+      "ELSP",
+      "ELSB"
+    ],
+    "primary_target_kpi": "orders_received_net / Orders Received Net",
+    "routing_principles": [
+      "Use Division_Baseline for division-level baseline, actual, growth, and alpha questions.",
+      "Use Monthly_Data for historical/monthly trends, order vs driver trends, metric-against-orders plots, and line charts over time.",
+      "Use KPI_Dictionary for KPI definitions, synonyms, misspellings, and KPI matching before querying other sheets.",
+      "Use Driver_Scenario_Input for selected drivers, elasticities, current/pessimistic/optimistic growth, and recommended ranges.",
+      "Use Contribution_Static for precomputed driver impact, MUSD contribution, contribution percentage, ranking, and waterfall-style explanation.",
+      "Use Point_Forecast_Static for precomputed dummy bear/base/bull forecast values.",
+      "Use Custom_Simulation_Template only as a structure/reference for custom scenario inputs; calculate custom results in Python."
+    ],
+    "chart_rules": [
+      "Use line charts for order trends, KPI trends, and order-vs-driver comparisons over time from Monthly_Data.",
+      "Treat phrases like 'Data Center against my ELSP orders' as a Monthly_Data multi-series time-series plot.",
+      "Use date on the x-axis for time-series charts.",
+      "If comparing order and driver metrics with very different scales, normalize/index both series to 100 or explain the scale limitation.",
+      "Use waterfall or sorted bar charts for driver contribution breakdowns from Contribution_Static.",
+      "Use scenario comparison charts for bear/base/bull or custom scenario comparison.",
+      "Every chart response should include one to three concise business interpretation lines."
+    ],
+    "scenario_rules": [
+      "Formula: order_growth_pct = alpha + SUM(elasticity * driver_growth_pct).",
+      "Read division alpha from Division_Baseline.",
+      "Use pessimistic/current/optimistic growth from Driver_Scenario_Input for standard scenarios.",
+      "Use user-provided growth for custom scenarios and compare it with recommended_min_pct and recommended_max_pct.",
+      "Warn when user-provided growth is outside the recommended range; do not silently reject unless business rules say so.",
+      "If a KPI is not selected for the requested division, explain that selected-driver simulation is not available in v1."
+    ],
+    "wording_rules": [
+      "Avoid saying a driver caused movement unless causal assumptions are explicitly supported.",
+      "Prefer 'associated with', 'contributed to explained movement', or 'estimated impact'.",
+      "Do not rerun feature selection, retrain models, change elasticities, or create new drivers in v1.",
+      "If the user disagrees with a driver, range, or result, capture feedback for future modelling review."
+    ]
+  },
+  "tables": [
+    {
+      "sheet_name": "README",
+      "table_name": "readme",
+      "description": "Workbook guide and sheet documentation. Use this only when the user asks what the workbook contains, what a sheet is for, or whether formulas are used.",
+      "routing_keywords": [
+        "workbook overview",
+        "readme",
+        "sheet description",
+        "what data is available",
+        "formulas"
+      ],
+      "question_guide": {
+        "grain": "One row per workbook documentation item.",
+        "use_for": [
+          "Questions asking what sheets or data are available in the workbook.",
+          "Questions asking whether workbook formulas exist or where calculations should happen.",
+          "Questions asking for the purpose of a specific sheet."
+        ],
+        "do_not_use_for": [
+          "Numeric business answers about orders, growth, forecasts, drivers, KPIs, or trends."
+        ],
+        "answer_columns": [
+          "item",
+          "description"
+        ],
+        "example_questions": [
+          "What does this workbook contain?",
+          "Which sheet has forecast values?",
+          "Are Excel formulas used in this workbook?"
+        ]
+      },
+      "row_count": 10,
+      "sample_records": [
+        {
+          "item": "Purpose",
+          "description": "This workbook is a static knowledge-base dataset for the Driver Analysis chatbot demo."
+        },
+        {
+          "item": "Important",
+          "description": "No Excel formulas are used. Python/chatbot functions should perform scenario calculations dynamically."
+        },
+        {
+          "item": "Driver_Scenario_Input",
+          "description": "Selected drivers, elasticity, pessimistic/current/optimistic growth, and recommended ranges."
+        }
+      ],
+      "columns": [
+        {
+          "original_name": "Item",
+          "column_name": "item",
+          "dtype": "object",
+          "description": ""
+        },
+        {
+          "original_name": "Description",
+          "column_name": "description",
+          "dtype": "object",
+          "description": ""
+        }
+      ]
+    },
+    {
+      "sheet_name": "Division_Baseline",
+      "table_name": "division_baseline",
+      "description": "Division-level baseline and actual orders. This is the source of truth for questions comparing 2025 actual orders with 2024 baseline orders by division, including growth amount, growth percentage, baseline year, forecast year, and alpha/intercept values used by the simulator.",
+      "routing_keywords": [
+        "division growth",
+        "growth of ELSP",
+        "growth of ELSB",
+        "2025 compared to 2024",
+        "baseline vs actual",
+        "actual orders",
+        "baseline orders",
+        "actual_growth_pct",
+        "actual_growth_musd",
+        "alpha"
+      ],
+      "question_guide": {
+        "grain": "One row per division with 2024 baseline orders and 2025 actual/forecast comparison values.",
+        "use_for": [
+          "Division-level 2025 vs 2024 growth questions.",
+          "Baseline orders, actual orders, actual growth MUSD, actual growth percent, or alpha by division.",
+          "Questions like 'what was the growth of ELSP for 2025 compared to 2024'."
+        ],
+        "do_not_use_for": [
+          "Monthly trend questions; use monthly_data.",
+          "Driver-level contribution or impact questions; use contribution_static.",
+          "Selected driver or elasticity assumption questions; use driver_scenario_input.",
+          "Bear/base/bull forecast scenario questions; use point_forecast_static."
+        ],
+        "answer_columns": [
+          "division",
+          "baseline_year",
+          "forecast_year",
+          "baseline_orders_musd",
+          "actual_orders_musd",
+          "actual_growth_musd",
+          "actual_growth_pct",
+          "alpha_pct"
+        ],
+        "example_questions": [
+          "What was the growth of ELSP for 2025 compared to 2024?",
+          "Show baseline and actual orders by division.",
+          "What is the actual growth percentage for ELSB?",
+          "Which division had higher actual orders in 2025?",
+          "Show alpha values by division."
+        ]
+      },
+      "row_count": 2,
+      "sample_records": [
+        {
+          "division": "ELSP",
+          "baseline_year": 2024,
+          "forecast_year": 2025,
+          "baseline_orders_musd": 1250,
+          "actual_orders_musd": 1400,
+          "actual_growth_musd": 150,
+          "actual_growth_pct": 0.12,
+          "alpha_pct": 0.02,
+          "notes": "Dummy alpha/intercept used by chatbot simulation function"
+        },
+        {
+          "division": "ELSB",
+          "baseline_year": 2024,
+          "forecast_year": 2025,
+          "baseline_orders_musd": 980,
+          "actual_orders_musd": 1080,
+          "actual_growth_musd": 100,
+          "actual_growth_pct": 0.102,
+          "alpha_pct": 0.015,
+          "notes": "Dummy alpha/intercept used by chatbot simulation function"
+        }
+      ],
+      "columns": [
+        {
+          "original_name": "division",
+          "column_name": "division",
+          "dtype": "object",
+          "description": "Division code. Known values include ELSP and ELSB."
+        },
+        {
+          "original_name": "baseline_year",
+          "column_name": "baseline_year",
+          "dtype": "int64",
+          "description": "Baseline comparison year, currently 2024."
+        },
+        {
+          "original_name": "forecast_year",
+          "column_name": "forecast_year",
+          "dtype": "int64",
+          "description": "Actual/forecast comparison year, currently 2025."
+        },
+        {
+          "original_name": "baseline_orders_musd",
+          "column_name": "baseline_orders_musd",
+          "dtype": "int64",
+          "description": "Orders in the baseline year in million USD."
+        },
+        {
+          "original_name": "actual_orders_musd",
+          "column_name": "actual_orders_musd",
+          "dtype": "int64",
+          "description": "Actual orders in the forecast year in million USD."
+        },
+        {
+          "original_name": "actual_growth_musd",
+          "column_name": "actual_growth_musd",
+          "dtype": "int64",
+          "description": "Increase from baseline_orders_musd to actual_orders_musd in million USD."
+        },
+        {
+          "original_name": "actual_growth_pct",
+          "column_name": "actual_growth_pct",
+          "dtype": "float64",
+          "description": "Percentage growth from baseline year to forecast year."
+        },
+        {
+          "original_name": "alpha_pct",
+          "column_name": "alpha_pct",
+          "dtype": "float64",
+          "description": "Dummy alpha/intercept percentage used by the simulator."
+        },
+        {
+          "original_name": "notes",
+          "column_name": "notes",
+          "dtype": "object",
+          "description": "Notes about the baseline row."
+        }
+      ]
+    },
+    {
+      "sheet_name": "Driver_Scenario_Input",
+      "table_name": "driver_scenario_input",
+      "description": "Selected driver inputs by division. Contains driver names, KPI codes, selected_flag, elasticity, pessimistic/current/optimistic growth percentages, recommended min/max growth ranges, units, frequency, country/region, source type, and rationale. Use for questions about selected drivers, scenario input assumptions, elasticities, growth ranges, driver metadata, or which KPIs are used for a division.",
+      "routing_keywords": [
+        "selected drivers",
+        "driver scenario",
+        "elasticity",
+        "pessimistic growth",
+        "current growth",
+        "optimistic growth",
+        "recommended range",
+        "selected_flag",
+        "driver rationale"
+      ],
+      "question_guide": {
+        "grain": "One row per division and selected driver input assumption.",
+        "use_for": [
+          "Selected drivers by division.",
+          "Elasticity, current/pessimistic/optimistic driver growth, recommended input ranges, KPI code, unit, frequency, source, and rationale.",
+          "Scenario assumption questions before calculating or plotting contributions."
+        ],
+        "do_not_use_for": [
+          "Already-calculated contribution/impact results; use contribution_static.",
+          "KPI definitions or business meanings; use kpi_dictionary.",
+          "Monthly historical KPI values; use monthly_data.",
+          "Division baseline vs actual orders; use division_baseline."
+        ],
+        "answer_columns": [
+          "division",
+          "driver",
+          "kpi_code",
+          "selected_flag",
+          "elasticity",
+          "pessimistic_growth_pct",
+          "current_growth_pct",
+          "optimistic_growth_pct",
+          "recommended_min_pct",
+          "recommended_max_pct",
+          "unit",
+          "frequency",
+          "country_or_region",
+          "source_type",
+          "rationale_short"
+        ],
+        "example_questions": [
+          "Which drivers are selected for ELSP?",
+          "What are the elasticities for ELSB drivers?",
+          "What is the recommended growth range for Copper Price?",
+          "Show current and optimistic growth assumptions for ELSP.",
+          "Which KPI codes are used for ELSB?"
+        ]
+      },
+      "row_count": 12,
+      "sample_records": [
+        {
+          "division": "ELSP",
+          "driver": "Data Center / Hyperscaler",
+          "kpi_code": "DC_HYPER",
+          "selected_flag": "Yes",
+          "elasticity": 0.6,
+          "pessimistic_growth_pct": 0.15,
+          "current_growth_pct": 0.22,
+          "optimistic_growth_pct": 0.35,
+          "recommended_min_pct": 0.15,
+          "recommended_max_pct": 0.35,
+          "unit": "growth %",
+          "frequency": "Quarterly",
+          "country_or_region": "US / Global",
+          "source_type": "External",
+          "rationale_short": "High-growth sector demand indicator; largest positive driver in demo."
+        },
+        {
+          "division": "ELSP",
+          "driver": "US Computer Products",
+          "kpi_code": "US_COMP_PROD",
+          "selected_flag": "Yes",
+          "elasticity": 0.18,
+          "pessimistic_growth_pct": 0.0,
+          "current_growth_pct": 0.02,
+          "optimistic_growth_pct": 0.05,
+          "recommended_min_pct": 0.0,
+          "recommended_max_pct": 0.05,
+          "unit": "growth %",
+          "frequency": "Quarterly",
+          "country_or_region": "United States",
+          "source_type": "External",
+          "rationale_short": "Captures electronics/computer manufacturing activity."
+        },
+        {
+          "division": "ELSP",
+          "driver": "Europe Producer Price Index",
+          "kpi_code": "EU_PPI",
+          "selected_flag": "Yes",
+          "elasticity": -0.12,
+          "pessimistic_growth_pct": -0.01,
+          "current_growth_pct": 0.025,
+          "optimistic_growth_pct": 0.05,
+          "recommended_min_pct": -0.01,
+          "recommended_max_pct": 0.05,
+          "unit": "growth %",
+          "frequency": "Quarterly",
+          "country_or_region": "Europe",
+          "source_type": "External",
+          "rationale_short": "Represents producer-level inflation/cost pressure."
+        }
+      ],
+      "columns": [
+        {
+          "original_name": "division",
+          "column_name": "division",
+          "dtype": "object",
+          "description": "Division code for the driver input."
+        },
+        {
+          "original_name": "driver",
+          "column_name": "driver",
+          "dtype": "object",
+          "description": "Driver or external KPI name used in the scenario."
+        },
+        {
+          "original_name": "kpi_code",
+          "column_name": "kpi_code",
+          "dtype": "object",
+          "description": "Short KPI code that maps to kpi_dictionary."
+        },
+        {
+          "original_name": "selected_flag",
+          "column_name": "selected_flag",
+          "dtype": "object",
+          "description": "Whether the driver is selected. Values use Yes."
+        },
+        {
+          "original_name": "elasticity",
+          "column_name": "elasticity",
+          "dtype": "float64",
+          "description": "Elasticity linking driver growth to order impact."
+        },
+        {
+          "original_name": "pessimistic_growth_pct",
+          "column_name": "pessimistic_growth_pct",
+          "dtype": "float64",
+          "description": "Pessimistic scenario driver growth percentage."
+        },
+        {
+          "original_name": "current_growth_pct",
+          "column_name": "current_growth_pct",
+          "dtype": "float64",
+          "description": "Current/base scenario driver growth percentage."
+        },
+        {
+          "original_name": "optimistic_growth_pct",
+          "column_name": "optimistic_growth_pct",
+          "dtype": "float64",
+          "description": "Optimistic scenario driver growth percentage."
+        },
+        {
+          "original_name": "recommended_min_pct",
+          "column_name": "recommended_min_pct",
+          "dtype": "float64",
+          "description": "Recommended lower bound for custom growth input."
+        },
+        {
+          "original_name": "recommended_max_pct",
+          "column_name": "recommended_max_pct",
+          "dtype": "float64",
+          "description": "Recommended upper bound for custom growth input."
+        },
+        {
+          "original_name": "unit",
+          "column_name": "unit",
+          "dtype": "object",
+          "description": "Measurement unit, typically growth percentage."
+        },
+        {
+          "original_name": "frequency",
+          "column_name": "frequency",
+          "dtype": "object",
+          "description": "Data refresh or measurement frequency."
+        },
+        {
+          "original_name": "country_or_region",
+          "column_name": "country_or_region",
+          "dtype": "object",
+          "description": "Relevant geography for the KPI or driver."
+        },
+        {
+          "original_name": "source_type",
+          "column_name": "source_type",
+          "dtype": "object",
+          "description": "External, commodity, or other source classification."
+        },
+        {
+          "original_name": "rationale_short",
+          "column_name": "rationale_short",
+          "dtype": "object",
+          "description": "Short explanation of why the driver matters."
+        }
+      ]
+    },
+    {
+      "sheet_name": "Point_Forecast_Static",
+      "table_name": "point_forecast_static",
+      "description": "Static point forecast outputs by division. Contains alpha plus bear/base/bull order growth percentages and bear/base/bull forecast order values in MUSD. Use when the user asks for precomputed forecast scenarios or bear/base/bull values.",
+      "routing_keywords": [
+        "point forecast",
+        "bear forecast",
+        "base forecast",
+        "bull forecast",
+        "forecast orders",
+        "forecast growth",
+        "scenario forecast"
+      ],
+      "question_guide": {
+        "grain": "One row per division with precomputed bear/base/bull forecast growth and order values.",
+        "use_for": [
+          "Precomputed point forecast outputs.",
+          "Bear/base/bull forecast order values or order growth percentages by division.",
+          "Questions comparing forecast scenarios across divisions."
+        ],
+        "do_not_use_for": [
+          "Actual 2025 vs 2024 growth; use division_baseline.",
+          "Custom user scenario calculations; use calculate_final_value with inputs from the user or custom_simulation_template.",
+          "Driver-level impact decomposition; use contribution_static."
+        ],
+        "answer_columns": [
+          "division",
+          "alpha_pct",
+          "bear_order_growth_pct",
+          "base_order_growth_pct",
+          "bull_order_growth_pct",
+          "bear_orders_musd",
+          "base_orders_musd",
+          "bull_orders_musd",
+          "note"
+        ],
+        "example_questions": [
+          "Show bear/base/bull forecasts by division.",
+          "What is the bull forecast order value for ELSP?",
+          "Compare base order growth percent across divisions.",
+          "Plot forecast orders by division."
+        ]
+      },
+      "row_count": 2,
+      "sample_records": [
+        {
+          "division": "ELSP",
+          "alpha_pct": 0.02,
+          "bear_order_growth_pct": 0.1187,
+          "base_order_growth_pct": 0.1761,
+          "bull_order_growth_pct": 0.274,
+          "bear_orders_musd": 1398.375,
+          "base_orders_musd": 1470.125,
+          "bull_orders_musd": 1592.5,
+          "note": "Static point forecast for demo; no Excel formulas used"
+        },
+        {
+          "division": "ELSB",
+          "alpha_pct": 0.015,
+          "bear_order_growth_pct": 0.02,
+          "base_order_growth_pct": 0.054450000000000005,
+          "bull_order_growth_pct": 0.09110000000000001,
+          "bear_orders_musd": 999.6,
+          "base_orders_musd": 1033.361,
+          "bull_orders_musd": 1069.278,
+          "note": "Static point forecast for demo; no Excel formulas used"
+        }
+      ],
+      "columns": [
+        {
+          "original_name": "division",
+          "column_name": "division",
+          "dtype": "object",
+          "description": "Division code for static forecast outputs."
+        },
+        {
+          "original_name": "alpha_pct",
+          "column_name": "alpha_pct",
+          "dtype": "float64",
+          "description": "Alpha/intercept percentage used in the static forecast."
+        },
+        {
+          "original_name": "bear_order_growth_pct",
+          "column_name": "bear_order_growth_pct",
+          "dtype": "float64",
+          "description": "Bear-case order growth percentage."
+        },
+        {
+          "original_name": "base_order_growth_pct",
+          "column_name": "base_order_growth_pct",
+          "dtype": "float64",
+          "description": "Base-case order growth percentage."
+        },
+        {
+          "original_name": "bull_order_growth_pct",
+          "column_name": "bull_order_growth_pct",
+          "dtype": "float64",
+          "description": "Bull-case order growth percentage."
+        },
+        {
+          "original_name": "bear_orders_musd",
+          "column_name": "bear_orders_musd",
+          "dtype": "float64",
+          "description": "Bear-case forecast orders in million USD."
+        },
+        {
+          "original_name": "base_orders_musd",
+          "column_name": "base_orders_musd",
+          "dtype": "float64",
+          "description": "Base-case forecast orders in million USD."
+        },
+        {
+          "original_name": "bull_orders_musd",
+          "column_name": "bull_orders_musd",
+          "dtype": "float64",
+          "description": "Bull-case forecast orders in million USD."
+        },
+        {
+          "original_name": "note",
+          "column_name": "note",
+          "dtype": "object",
+          "description": "Notes about static forecast values."
+        }
+      ]
+    },
+    {
+      "sheet_name": "Contribution_Static",
+      "table_name": "contribution_static",
+      "description": "Static driver contribution results by division and driver. Contains elasticity, current growth, driver impact percentage, baseline orders, driver impact in MUSD, signed contribution percentage, absolute contribution percentage, and notes. Use for contribution, impact, waterfall, bridge, ranking, or decomposition questions.",
+      "routing_keywords": [
+        "contribution",
+        "driver impact",
+        "impact MUSD",
+        "signed contribution",
+        "absolute contribution",
+        "waterfall",
+        "bridge",
+        "decomposition"
+      ],
+      "question_guide": {
+        "grain": "One row per division and driver with precomputed contribution/impact results.",
+        "use_for": [
+          "Driver contribution, impact, decomposition, bridge, waterfall, ranking, or share questions.",
+          "Driver impact in MUSD or percent by division.",
+          "Contribution plots by driver."
+        ],
+        "do_not_use_for": [
+          "Selected driver assumption lists; use driver_scenario_input.",
+          "Raw monthly trends; use monthly_data.",
+          "KPI definitions; use kpi_dictionary.",
+          "Baseline vs actual division growth; use division_baseline."
+        ],
+        "answer_columns": [
+          "division",
+          "driver",
+          "elasticity",
+          "current_growth_pct",
+          "driver_impact_pct",
+          "baseline_orders_musd",
+          "driver_impact_musd",
+          "signed_contribution_pct",
+          "absolute_contribution_pct",
+          "note"
+        ],
+        "example_questions": [
+          "Show driver contribution for ELSP.",
+          "Which driver has the largest impact for ELSB?",
+          "Plot driver impact MUSD by driver.",
+          "Create a waterfall chart of ELSP driver contributions.",
+          "Rank drivers by absolute contribution percentage."
+        ]
+      },
+      "row_count": 12,
+      "sample_records": [
+        {
+          "division": "ELSP",
+          "driver": "Data Center / Hyperscaler",
+          "elasticity": 0.6,
+          "current_growth_pct": 0.22,
+          "driver_impact_pct": 0.132,
+          "baseline_orders_musd": 1250,
+          "driver_impact_musd": 165.0,
+          "signed_contribution_pct": 0.8456117873158232,
+          "absolute_contribution_pct": 0.7714786674459381,
+          "note": "Static demo value; chatbot/Python can recalculate dynamically later"
+        },
+        {
+          "division": "ELSP",
+          "driver": "US Computer Products",
+          "elasticity": 0.18,
+          "current_growth_pct": 0.02,
+          "driver_impact_pct": 0.0036,
+          "baseline_orders_musd": 1250,
+          "driver_impact_musd": 4.5,
+          "signed_contribution_pct": 0.023062139654067906,
+          "absolute_contribution_pct": 0.02104032729398013,
+          "note": "Static demo value; chatbot/Python can recalculate dynamically later"
+        },
+        {
+          "division": "ELSP",
+          "driver": "Europe Producer Price Index",
+          "elasticity": -0.12,
+          "current_growth_pct": 0.025,
+          "driver_impact_pct": -0.003,
+          "baseline_orders_musd": 1250,
+          "driver_impact_musd": -3.75,
+          "signed_contribution_pct": -0.019218449711723255,
+          "absolute_contribution_pct": 0.017533606078316773,
+          "note": "Static demo value; chatbot/Python can recalculate dynamically later"
+        }
+      ],
+      "columns": [
+        {
+          "original_name": "division",
+          "column_name": "division",
+          "dtype": "object",
+          "description": "Division code for contribution row."
+        },
+        {
+          "original_name": "driver",
+          "column_name": "driver",
+          "dtype": "object",
+          "description": "Driver contributing to order growth."
+        },
+        {
+          "original_name": "elasticity",
+          "column_name": "elasticity",
+          "dtype": "float64",
+          "description": "Elasticity used for contribution calculation."
+        },
+        {
+          "original_name": "current_growth_pct",
+          "column_name": "current_growth_pct",
+          "dtype": "float64",
+          "description": "Current driver growth percentage."
+        },
+        {
+          "original_name": "driver_impact_pct",
+          "column_name": "driver_impact_pct",
+          "dtype": "float64",
+          "description": "Driver impact as percentage contribution."
+        },
+        {
+          "original_name": "baseline_orders_musd",
+          "column_name": "baseline_orders_musd",
+          "dtype": "int64",
+          "description": "Baseline orders used for impact calculation."
+        },
+        {
+          "original_name": "driver_impact_musd",
+          "column_name": "driver_impact_musd",
+          "dtype": "float64",
+          "description": "Driver impact converted to million USD."
+        },
+        {
+          "original_name": "signed_contribution_pct",
+          "column_name": "signed_contribution_pct",
+          "dtype": "float64",
+          "description": "Signed contribution percentage, preserving positive or negative direction."
+        },
+        {
+          "original_name": "absolute_contribution_pct",
+          "column_name": "absolute_contribution_pct",
+          "dtype": "float64",
+          "description": "Absolute contribution percentage for ranking magnitude."
+        },
+        {
+          "original_name": "note",
+          "column_name": "note",
+          "dtype": "object",
+          "description": "Notes about static contribution values."
+        }
+      ]
+    },
+    {
+      "sheet_name": "Custom_Simulation_Template",
+      "table_name": "custom_simulation_template",
+      "description": "Template for user-provided custom scenario simulations. Contains division, driver, elasticity, blank custom_growth_pct placeholder, recommended min/max ranges, whether the range check is expected, and agent notes. Use for custom scenario setup, required inputs, validation ranges, or asking the user to provide custom growth assumptions.",
+      "routing_keywords": [
+        "custom simulation",
+        "custom scenario",
+        "custom growth",
+        "simulation template",
+        "within range",
+        "recommended min",
+        "recommended max"
+      ],
+      "question_guide": {
+        "grain": "One row per division and driver with template fields for user-provided custom growth inputs.",
+        "use_for": [
+          "Questions about what inputs are needed for a custom simulation.",
+          "Recommended min/max ranges for user custom growth assumptions.",
+          "Range validation setup for custom scenario input."
+        ],
+        "do_not_use_for": [
+          "Static contribution answers; use contribution_static.",
+          "Running the final simulation result; use calculate_final_value after collecting inputs.",
+          "KPI definitions; use kpi_dictionary."
+        ],
+        "answer_columns": [
+          "division",
+          "driver",
+          "elasticity",
+          "custom_growth_pct",
+          "recommended_min_pct",
+          "recommended_max_pct",
+          "within_range_expected",
+          "notes_for_agent"
+        ],
+        "example_questions": [
+          "What inputs do I need for a custom simulation?",
+          "What is the recommended custom growth range for US Utility Capex?",
+          "Which drivers need custom growth values for ELSP?",
+          "Is my custom growth assumption within the expected range?"
+        ]
+      },
+      "row_count": 12,
+      "sample_records": [
+        {
+          "division": "ELSP",
+          "driver": "Data Center / Hyperscaler",
+          "elasticity": 0.6,
+          "custom_growth_pct": NaN,
+          "recommended_min_pct": 0.15,
+          "recommended_max_pct": 0.35,
+          "within_range_expected": "To be evaluated by Python function",
+          "notes_for_agent": "User can provide custom_growth_pct; Python function calculates total forecast"
+        },
+        {
+          "division": "ELSP",
+          "driver": "US Computer Products",
+          "elasticity": 0.18,
+          "custom_growth_pct": NaN,
+          "recommended_min_pct": 0.0,
+          "recommended_max_pct": 0.05,
+          "within_range_expected": "To be evaluated by Python function",
+          "notes_for_agent": "User can provide custom_growth_pct; Python function calculates total forecast"
+        },
+        {
+          "division": "ELSP",
+          "driver": "Europe Producer Price Index",
+          "elasticity": -0.12,
+          "custom_growth_pct": NaN,
+          "recommended_min_pct": -0.01,
+          "recommended_max_pct": 0.05,
+          "within_range_expected": "To be evaluated by Python function",
+          "notes_for_agent": "User can provide custom_growth_pct; Python function calculates total forecast"
+        }
+      ],
+      "columns": [
+        {
+          "original_name": "division",
+          "column_name": "division",
+          "dtype": "object",
+          "description": "Division code for custom simulation input."
+        },
+        {
+          "original_name": "driver",
+          "column_name": "driver",
+          "dtype": "object",
+          "description": "Driver to be assigned a user custom growth assumption."
+        },
+        {
+          "original_name": "elasticity",
+          "column_name": "elasticity",
+          "dtype": "float64",
+          "description": "Elasticity to apply in simulation."
+        },
+        {
+          "original_name": "custom_growth_pct",
+          "column_name": "custom_growth_pct",
+          "dtype": "float64",
+          "description": "Blank placeholder where the user can provide custom growth percentage."
+        },
+        {
+          "original_name": "recommended_min_pct",
+          "column_name": "recommended_min_pct",
+          "dtype": "float64",
+          "description": "Recommended lower bound for custom growth."
+        },
+        {
+          "original_name": "recommended_max_pct",
+          "column_name": "recommended_max_pct",
+          "dtype": "float64",
+          "description": "Recommended upper bound for custom growth."
+        },
+        {
+          "original_name": "within_range_expected",
+          "column_name": "within_range_expected",
+          "dtype": "object",
+          "description": "Expected validation result for custom input range checks."
+        },
+        {
+          "original_name": "notes_for_agent",
+          "column_name": "notes_for_agent",
+          "dtype": "object",
+          "description": "Guidance for assistant behavior during simulation."
+        }
+      ]
+    },
+    {
+      "sheet_name": "KPI_Dictionary",
+      "table_name": "kpi_dictionary",
+      "description": "KPI reference dictionary. Contains KPI name, KPI code, definition, business meaning, synonyms, category, country/region, frequency, and source type. Use for questions asking what a KPI means, KPI code definitions, synonyms, categories, or business meaning.",
+      "routing_keywords": [
+        "KPI definition",
+        "KPI code",
+        "business meaning",
+        "synonyms",
+        "metric definition",
+        "what does KPI mean"
+      ],
+      "question_guide": {
+        "grain": "One row per KPI/driver definition and synonym set.",
+        "use_for": [
+          "KPI definitions, business meanings, synonyms, categories, source type, frequency, or geography.",
+          "Mapping user language to KPI codes before querying driver_scenario_input or monthly_data."
+        ],
+        "do_not_use_for": [
+          "Numeric KPI time-series values; use monthly_data.",
+          "Selected driver assumptions; use driver_scenario_input.",
+          "Contribution values; use contribution_static."
+        ],
+        "answer_columns": [
+          "kpi_name",
+          "kpi_code",
+          "definition",
+          "business_meaning",
+          "synonyms",
+          "category",
+          "country_or_region",
+          "frequency",
+          "source_type"
+        ],
+        "example_questions": [
+          "What does KPI code DC_HYPER mean?",
+          "Define Copper Price.",
+          "What are synonyms for US Computer Products?",
+          "Which KPIs are commodity indicators?",
+          "What is the business meaning of China IIP?"
+        ]
+      },
+      "row_count": 10,
+      "sample_records": [
+        {
+          "kpi_name": "Data Center / Hyperscaler",
+          "kpi_code": "DC_HYPER",
+          "definition": "Measures demand or investment activity related to data centers and hyperscale infrastructure.",
+          "business_meaning": "Higher data center activity may increase demand for electrification, automation and related products.",
+          "synonyms": "hyperscaler; data center growth; cloud infrastructure; server infrastructure",
+          "category": "Sector Demand",
+          "country_or_region": "US / Global",
+          "frequency": "Quarterly",
+          "source_type": "External"
+        },
+        {
+          "kpi_name": "US GDP",
+          "kpi_code": "US_GDP",
+          "definition": "Gross Domestic Product of the United States; measures overall economic output.",
+          "business_meaning": "Higher GDP generally indicates stronger economic activity and may support business demand.",
+          "synonyms": "US economy; economic growth; GDP growth; macro growth",
+          "category": "Macro",
+          "country_or_region": "United States",
+          "frequency": "Quarterly",
+          "source_type": "External"
+        },
+        {
+          "kpi_name": "China GDP",
+          "kpi_code": "CN_GDP",
+          "definition": "Gross Domestic Product of China; measures overall economic output.",
+          "business_meaning": "Higher China GDP may indicate stronger economic and industrial demand.",
+          "synonyms": "China economy; Chinese growth; macro growth China",
+          "category": "Macro",
+          "country_or_region": "China",
+          "frequency": "Quarterly",
+          "source_type": "External"
+        }
+      ],
+      "columns": [
+        {
+          "original_name": "kpi_name",
+          "column_name": "kpi_name",
+          "dtype": "object",
+          "description": "Readable KPI or driver name."
+        },
+        {
+          "original_name": "kpi_code",
+          "column_name": "kpi_code",
+          "dtype": "object",
+          "description": "Short KPI code used by driver_scenario_input."
+        },
+        {
+          "original_name": "definition",
+          "column_name": "definition",
+          "dtype": "object",
+          "description": "Plain-language KPI definition."
+        },
+        {
+          "original_name": "business_meaning",
+          "column_name": "business_meaning",
+          "dtype": "object",
+          "description": "Why the KPI matters for ABB business context."
+        },
+        {
+          "original_name": "synonyms",
+          "column_name": "synonyms",
+          "dtype": "object",
+          "description": "Alternate phrases that should map to this KPI."
+        },
+        {
+          "original_name": "category",
+          "column_name": "category",
+          "dtype": "object",
+          "description": "KPI category such as macro, industrial, sector demand, commodity, or investment."
+        },
+        {
+          "original_name": "country_or_region",
+          "column_name": "country_or_region",
+          "dtype": "object",
+          "description": "Relevant geography."
+        },
+        {
+          "original_name": "frequency",
+          "column_name": "frequency",
+          "dtype": "object",
+          "description": "Measurement frequency."
+        },
+        {
+          "original_name": "source_type",
+          "column_name": "source_type",
+          "dtype": "object",
+          "description": "Source classification."
+        }
+      ]
+    },
+    {
+      "sheet_name": "Monthly_Data",
+      "table_name": "monthly_data",
+      "description": "Monthly time-series data for 2021-2025 across ELSP and ELSB. Contains monthly orders received net in MUSD and monthly/quarterly macro or driver KPI values such as US GDP, US Data Center, China IIP, US Computer Products, US Capacity, US Utility Capex, China GDP, Europe Producer Price Index, Copper Price, and Iron Price. Use for trends over time, monthly/yearly comparisons, time-series plots, correlations, and historical KPI or order patterns. Do not use this for the simple 2025 versus 2024 baseline growth question; use division_baseline for that.",
+      "routing_keywords": [
+        "monthly trend",
+        "over time",
+        "time series",
+        "2021",
+        "2022",
+        "2023",
+        "2024",
+        "2025 monthly",
+        "orders trend",
+        "historical KPI",
+        "correlation"
+      ],
+      "question_guide": {
+        "grain": "One row per month and division from 2021 through 2025 with orders and driver KPI values.",
+        "use_for": [
+          "Monthly trends, time-series plots, over-time analysis, yearly comparisons from monthly observations, and historical driver/KPI values.",
+          "Questions about orders_received_net_musd over time by division.",
+          "Order versus driver trend charts, such as orders vs Data Center for ELSP.",
+          "Metric-against-orders plots, such as Data Center against my ELSP orders.",
+          "Historical values for US GDP, US Data Center, China IIP, US Computer Products, US Capacity, US Utility Capex, China GDP, Europe Producer Price Index, Copper Price, or Iron Price.",
+          "Correlation-style questions between monthly orders and monthly KPI drivers."
+        ],
+        "do_not_use_for": [
+          "Simple 2025 vs 2024 baseline growth by division; use division_baseline.",
+          "Precomputed driver contribution or impact values; use contribution_static.",
+          "KPI definitions; use kpi_dictionary.",
+          "Selected driver assumptions; use driver_scenario_input."
+        ],
+        "answer_columns": [
+          "date",
+          "year",
+          "month",
+          "division",
+          "orders_received_net_musd",
+          "us_gdp",
+          "us_data_center",
+          "china_iip",
+          "us_computer_products",
+          "us_capacity",
+          "us_utility_capex",
+          "china_gdp",
+          "europe_producer_price_index",
+          "copper_price",
+          "iron_price"
+        ],
+        "example_questions": [
+          "Plot monthly orders trend for ELSP.",
+          "Show orders over time for ELSB.",
+          "What were ELSP orders by month in 2025?",
+          "Plot order vs Data Center for ELSP.",
+          "I want to see the plot of Data Center against my ELSP orders.",
+          "Plot Copper Price over time.",
+          "Compare yearly total orders by division using monthly data.",
+          "Show monthly US Data Center values for ELSP."
+        ]
+      },
+      "row_count": 120,
+      "sample_records": [
+        {
+          "date": "2021-01-01T00:00:00",
+          "year": 2021,
+          "month": 1,
+          "division": "ELSP",
+          "orders_received_net_musd": 850.0,
+          "us_gdp": 100.0,
+          "us_data_center": 83.46,
+          "china_iip": 95.9,
+          "us_computer_products": 70.5,
+          "us_capacity": 75.8,
+          "us_utility_capex": 62.17,
+          "china_gdp": 110.0,
+          "europe_producer_price_index": 98.9,
+          "copper_price": 9346.41,
+          "iron_price": 113.07
+        },
+        {
+          "date": "2021-02-01T00:00:00",
+          "year": 2021,
+          "month": 2,
+          "division": "ELSP",
+          "orders_received_net_musd": 871.2,
+          "us_gdp": 100.82,
+          "us_data_center": 85.3,
+          "china_iip": 95.18,
+          "us_computer_products": 71.12,
+          "us_capacity": 75.77,
+          "us_utility_capex": 61.57,
+          "china_gdp": 109.53,
+          "europe_producer_price_index": 98.28,
+          "copper_price": 9435.0,
+          "iron_price": 112.45
+        },
+        {
+          "date": "2021-03-01T00:00:00",
+          "year": 2021,
+          "month": 3,
+          "division": "ELSP",
+          "orders_received_net_musd": 888.5,
+          "us_gdp": 101.48,
+          "us_data_center": 86.06,
+          "china_iip": 94.46,
+          "us_computer_products": 71.5,
+          "us_capacity": 75.56,
+          "us_utility_capex": 60.64,
+          "china_gdp": 109.26,
+          "europe_producer_price_index": 98.18,
+          "copper_price": 9416.41,
+          "iron_price": 113.97
+        }
+      ],
+      "columns": [
+        {
+          "original_name": "date",
+          "column_name": "date",
+          "dtype": "datetime64[ns]",
+          "description": "Month start date."
+        },
+        {
+          "original_name": "year",
+          "column_name": "year",
+          "dtype": "int64",
+          "description": "Calendar year."
+        },
+        {
+          "original_name": "month",
+          "column_name": "month",
+          "dtype": "int64",
+          "description": "Calendar month number."
+        },
+        {
+          "original_name": "division",
+          "column_name": "division",
+          "dtype": "object",
+          "description": "Division code for monthly observations."
+        },
+        {
+          "original_name": "orders_received_net_musd",
+          "column_name": "orders_received_net_musd",
+          "dtype": "float64",
+          "description": "Monthly net orders received in million USD."
+        },
+        {
+          "original_name": "US GDP",
+          "column_name": "us_gdp",
+          "dtype": "float64",
+          "description": "US GDP driver value."
+        },
+        {
+          "original_name": "US Data Center",
+          "column_name": "us_data_center",
+          "dtype": "float64",
+          "description": "US data center / hyperscaler driver value."
+        },
+        {
+          "original_name": "China IIP",
+          "column_name": "china_iip",
+          "dtype": "float64",
+          "description": "China industrial production driver value."
+        },
+        {
+          "original_name": "US Computer Products",
+          "column_name": "us_computer_products",
+          "dtype": "float64",
+          "description": "US computer products manufacturing driver value."
+        },
+        {
+          "original_name": "US Capacity",
+          "column_name": "us_capacity",
+          "dtype": "float64",
+          "description": "US capacity driver value."
+        },
+        {
+          "original_name": "US Utility Capex",
+          "column_name": "us_utility_capex",
+          "dtype": "float64",
+          "description": "US utility capex driver value."
+        },
+        {
+          "original_name": "China GDP",
+          "column_name": "china_gdp",
+          "dtype": "float64",
+          "description": "China GDP driver value."
+        },
+        {
+          "original_name": "Europe Producer Price Index",
+          "column_name": "europe_producer_price_index",
+          "dtype": "float64",
+          "description": "Europe producer price index driver value."
+        },
+        {
+          "original_name": "Copper Price",
+          "column_name": "copper_price",
+          "dtype": "float64",
+          "description": "Copper price commodity driver value."
+        },
+        {
+          "original_name": "Iron Price",
+          "column_name": "iron_price",
+          "dtype": "float64",
+          "description": "Iron price commodity driver value."
+        }
+      ]
+    }
+  ],
+  "readme": {
+    "Purpose": "This workbook is a static knowledge-base dataset for the Driver Analysis chatbot demo.",
+    "Important": "No Excel formulas are used. Python/chatbot functions should perform scenario calculations dynamically.",
+    "Driver_Scenario_Input": "Selected drivers, elasticity, pessimistic/current/optimistic growth, and recommended ranges.",
+    "Division_Baseline": "Baseline orders, actual orders, and dummy alpha values by division.",
+    "Point_Forecast_Static": "Precomputed demo bear/base/bull values as static values only.",
+    "Contribution_Static": "Precomputed demo contribution values as static values only.",
+    "Custom_Simulation_Template": "Input-style template; custom_growth_pct is blank for user-provided scenario values.",
+    "KPI_Dictionary": "KPI definitions and synonyms for chatbot KPI matching and explanations.",
+    "Monthly_Data": "Static dummy monthly data for 2021-2025 across ELSP and ELSB. Use it for order trend questions and yearly comparisons.",
+    "No Excel formulas": "All sheets are static knowledge-base tables. Scenario calculations should be done by the chatbot Python function."
+  }
+}

@@ -1,0 +1,81 @@
+order_id,customer,region,product_line,quantity,unit_price,discount_rate,revenue,status,satisfaction_score
+1001,Evergreen Foods,Central,Electrification,11,8760,0.03,93469.2,Delayed,84
+1002,Crest Industrial,South,Electrification,1,9361,0,9361,Delayed,86
+1003,Apex Manufacturing,West,Motors,9,3149,0,28341,Delayed,97
+1004,Apex Manufacturing,North,Motors,3,13003,0.08,35888.28,Delivered,76
+1005,Delta Metals,Central,Motors,6,2954,0.05,16837.8,Delivered,82
+1006,HelioGrid Energy,South,Process Automation,6,15450,0,92700,Delivered,81
+1007,Delta Metals,North,Drives,14,1904,0.08,24523.52,Delivered,84
+1008,Evergreen Foods,Central,Motors,3,16221,0.08,44769.96,Delivered,85
+1009,BlueRiver Utilities,North,Drives,15,11747,0.03,170918.85,Delivered,76
+1010,HelioGrid Energy,Central,Motors,14,3995,0.1,50337.0,Delivered,88
+1011,NovaChem,West,Motors,8,15532,0.05,118043.2,Scheduled,95
+1012,HelioGrid Energy,East,Drives,9,8131,0.03,70983.63,Scheduled,80
+1013,Crest Industrial,South,Robotics,15,3840,0.03,55872.0,Delivered,89
+1014,Delta Metals,Central,Motors,6,16561,0.03,96385.02,In Progress,74
+1015,BlueRiver Utilities,West,Electrification,11,5196,0.03,55441.32,In Progress,84
+1016,Fusion Mobility,North,Process Automation,16,14069,0.05,213848.8,In Progress,80
+1017,Crest Industrial,West,Process Automation,5,6215,0.1,27967.5,Delivered,88
+1018,HelioGrid Energy,East,Drives,17,12734,0.03,209983.66,Delayed,93
+1019,BlueRiver Utilities,East,Motors,9,13642,0.1,110500.2,Scheduled,79
+1020,NovaChem,Central,Robotics,13,17305,0.03,218216.05,Scheduled,75
+1021,BlueRiver Utilities,South,Motors,16,7179,0.08,105674.88,Scheduled,81
+1022,Apex Manufacturing,South,Electrification,13,2979,0.1,34854.3,Scheduled,98
+1023,HelioGrid Energy,North,Electrification,11,13214,0.1,130818.6,In Progress,77
+1024,HelioGrid Energy,North,Motors,17,14326,0.03,236235.74,In Progress,72
+1025,Crest Industrial,North,Robotics,1,18420,0.03,17867.4,Delayed,84
+1026,Apex Manufacturing,South,Process Automation,17,7237,0.08,113186.68,Delayed,74
+1027,NovaChem,North,Motors,9,17074,0,153666,Delayed,96
+1028,Fusion Mobility,West,Drives,10,13936,0,139360,Delayed,89
+1029,HelioGrid Energy,East,Process Automation,6,3985,0,23910,In Progress,83
+1030,BlueRiver Utilities,North,Electrification,6,9859,0.03,57379.38,Delayed,74
+1031,Apex Manufacturing,West,Robotics,11,11795,0,129745,Delivered,78
+1032,Evergreen Foods,East,Drives,5,10224,0.1,46008.0,In Progress,96
+1033,Evergreen Foods,Central,Electrification,17,14443,0.08,225888.52,Delayed,93
+1034,Evergreen Foods,Central,Process Automation,6,9259,0,55554,Delivered,96
+1035,Evergreen Foods,East,Motors,11,10421,0.05,108899.45,Delayed,80
+1036,Crest Industrial,West,Drives,3,9861,0.1,26624.7,Delivered,81
+1037,NovaChem,West,Robotics,8,13443,0.08,98940.48,In Progress,91
+1038,Fusion Mobility,North,Drives,7,3210,0.05,21346.5,In Progress,91
+1039,NovaChem,Central,Electrification,14,4087,0.1,51496.2,Delivered,90
+1040,BlueRiver Utilities,North,Drives,13,16185,0,210405,Delivered,89
+1041,Evergreen Foods,North,Process Automation,9,16015,0.08,132604.2,In Progress,84
+1042,NovaChem,South,Process Automation,3,14465,0.08,39923.4,Delayed,83
+1043,Evergreen Foods,South,Process Automation,3,18232,0.1,49226.4,In Progress,77
+1044,BlueRiver Utilities,South,Robotics,9,17104,0.08,141621.12,In Progress,95
+1045,Evergreen Foods,East,Motors,1,3882,0,3882,In Progress,97
+1046,Fusion Mobility,Central,Motors,5,9472,0.03,45939.2,Delivered,77
+1047,BlueRiver Utilities,East,Electrification,3,3885,0,11655,In Progress,89
+1048,BlueRiver Utilities,South,Drives,7,10377,0.05,69007.05,Delayed,79
+1049,NovaChem,South,Drives,6,3433,0.03,19980.06,In Progress,94
+1050,Fusion Mobility,Central,Robotics,16,8361,0.05,127087.2,Scheduled,74
+1051,HelioGrid Energy,Central,Electrification,12,15800,0.08,174432.0,Delayed,83
+1052,Evergreen Foods,West,Motors,4,1947,0.08,7164.96,Scheduled,76
+1053,BlueRiver Utilities,East,Electrification,5,17022,0.05,80854.5,Delivered,79
+1054,Delta Metals,East,Drives,18,10692,0.05,182833.2,In Progress,80
+1055,HelioGrid Energy,North,Drives,17,18478,0.08,288995.92,Scheduled,95
+1056,Crest Industrial,Central,Motors,4,15252,0.03,59177.76,Delivered,84
+1057,Fusion Mobility,West,Drives,15,9282,0.03,135053.1,In Progress,85
+1058,Apex Manufacturing,West,Electrification,15,10709,0.05,152603.25,Delayed,84
+1059,Crest Industrial,North,Motors,12,7273,0.1,78548.4,Delayed,92
+1060,NovaChem,West,Process Automation,13,3074,0.08,36765.04,Delayed,73
+1061,HelioGrid Energy,North,Motors,18,15753,0.03,275047.38,In Progress,86
+1062,Crest Industrial,East,Electrification,17,1890,0,32130,Delivered,78
+1063,Fusion Mobility,West,Drives,12,18268,0,219216,Delayed,91
+1064,Delta Metals,North,Robotics,11,13371,0.03,142668.57,Delivered,74
+1065,BlueRiver Utilities,West,Electrification,18,14360,0,258480,In Progress,97
+1066,HelioGrid Energy,North,Drives,18,17911,0.03,312726.06,Delivered,87
+1067,Delta Metals,South,Drives,5,16495,0.03,80000.75,Delivered,91
+1068,BlueRiver Utilities,South,Electrification,5,6357,0,31785,Delivered,96
+1069,BlueRiver Utilities,Central,Process Automation,1,5147,0.08,4735.24,Delayed,82
+1070,NovaChem,North,Robotics,2,7293,0.05,13856.7,Scheduled,80
+1071,Apex Manufacturing,North,Electrification,12,8932,0.05,101824.8,Delivered,86
+1072,Fusion Mobility,South,Electrification,16,17892,0.1,257644.8,Delayed,85
+1073,NovaChem,Central,Drives,18,9864,0,177552,In Progress,96
+1074,Crest Industrial,Central,Robotics,6,8381,0.08,46263.12,In Progress,92
+1075,Evergreen Foods,South,Electrification,7,3429,0,24003,In Progress,76
+1076,Delta Metals,North,Electrification,4,9700,0.05,36860.0,Scheduled,93
+1077,HelioGrid Energy,North,Motors,11,15748,0.05,164566.6,Delivered,96
+1078,Evergreen Foods,North,Electrification,17,8556,0.1,130906.8,Delivered,95
+1079,Fusion Mobility,Central,Process Automation,12,1794,0.05,20451.6,Delayed,86
+1080,Delta Metals,South,Motors,7,12173,0,85211,Delivered,83

@@ -1,0 +1,8 @@
+.env
+__pycache__/
+*.pyc
+.DS_Store
+.matplotlib/
+plots/
+data/long_term_memory.txt
+new artifacts/*.ipynb
