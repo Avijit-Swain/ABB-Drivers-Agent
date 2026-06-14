@@ -8,7 +8,7 @@ from agent import agent, set_trace_callback
 
 
 st.set_page_config(
-    page_title="ABB Driver Analysis Copilot",
+    page_title="ABB Decision Insights Copilot",
     page_icon="assets/abb-logo.svg",
     layout="wide",
     initial_sidebar_state="collapsed",
@@ -512,7 +512,7 @@ with left_col:
             <div class="abb-card-box abb-left-brand">
                 <div class="abb-side-brand">
                     <img src="{ABB_LOGO_DATA_URL}" alt="ABB" />
-                    <div class="abb-side-title">Driver Analysis <strong>Copilot</strong></div>
+                    <div class="abb-side-title">Decision Insights <strong>Copilot</strong></div>
                 </div>
             </div>
             """

@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-A prototype "ABB Driver Analysis Copilot" with two separate frontends sharing a single agent backend. A LangGraph ReAct-style agent (`agent.py`) answers business questions over a small SQLite knowledge base, explains KPI definitions, runs what-if simulations, and generates Matplotlib plots.
+A prototype "Decision Insights Copilot" with two separate frontends sharing a single agent backend. A LangGraph ReAct-style agent (`agent.py`) answers business questions over a small SQLite knowledge base, explains KPI definitions, runs what-if simulations, and generates Matplotlib plots.
 
 ## Commands
 
@@ -14,7 +14,7 @@ pip install -r requirements.txt
 # Streamlit frontend (default)
 streamlit run app.py
 
-# React frontend (alternative, port 8502)
+# React frontend (alternative, port 8500)
 python server.py
 ```
 
@@ -27,7 +27,7 @@ There is no test suite, linter, or build step. Validation is done by running the
 ## Two frontends, one agent
 
 - **`app.py`** — Streamlit UI. Imports `agent` at module load, wires the live-trace panel via `set_trace_callback`, drives a `pending_prompt` state machine so Streamlit can show a spinner before `agent.respond` blocks.
-- **`server.py`** — stdlib `ThreadingHTTPServer` that serves the static React app from `react_app/` (port 8502) and exposes `POST /api/chat`. Does **not** wire `set_trace_callback`; tracing is a Streamlit-only feature.
+- **`server.py`** — stdlib `ThreadingHTTPServer` that serves the static React app from `react_app/` (port 8500) and exposes `POST /api/chat`. Does **not** wire `set_trace_callback`; tracing is a Streamlit-only feature.
 - **`react_app/`** — `index.html` / `app.js` / `styles.css`. The compiled static assets for the React frontend; served directly by `server.py`.
 - **`app_backup_pre_redesign.py`** — earlier Streamlit UI before the current design; not the active app.
 

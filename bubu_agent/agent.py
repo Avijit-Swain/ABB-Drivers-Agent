@@ -1,17 +1,21 @@
 import json
 import os
+import shutil
 import sqlite3
+import threading
 import time
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
+from typing import List, Literal, Optional
 
+import pandas as pd
 from dotenv import load_dotenv
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from langchain_core.tools import tool
 from langchain_openai import ChatOpenAI
 from langgraph.graph import END, START, MessagesState, StateGraph
 from langgraph.prebuilt import ToolNode
+from pydantic import BaseModel
 
 
 load_dotenv()
@@ -20,14 +24,30 @@ APP_DIR = Path(__file__).parent
 DATA_DIR = APP_DIR / "data"
 DB_PATH = APP_DIR / "new artifacts" / "driver_analysis_chatbot.db"
 PLOTS_DIR = APP_DIR / "plots"
-MPL_CONFIG_DIR = APP_DIR / ".matplotlib"
+STRUCTURED_RESULTS_DIR = DATA_DIR / "structured_results"
 UNSTRUCTURED_TEXT_PATH = DATA_DIR / "kpi_definitions_unstructured.txt"
+
+_tl = threading.local()  # stores: cid (set in respond() before graph invocation)
+
+# Module-level shared state — visible across all threads (tool threads + graph threads)
+_CURRENT_CID: dict = {"value": "unknown"}      # set in respond() before graph runs
+_LAST_CSV_PATH: dict = {"path": ""}            # set by structured_data_tool after CSV save
+_REQUEST_PLOT: dict = {"path": "", "latest": ""}  # set by _run_plotly_pipeline; cleared per request
 
 TRACE_CALLBACK = None
 LAST_STRUCTURED_RESULT = {
     "question": "",
     "result": "",
 }
+
+
+class PlotSpec(BaseModel):
+    chart_type: Literal["line", "bar", "waterfall"]
+    x_col: str
+    y_cols: List[str]
+    title: str
+    x_label: str
+    y_label: str
 
 
 def set_trace_callback(callback):
@@ -161,7 +181,7 @@ Example questions:
 
 
 KPI_DEFINITIONS_FALLBACK = """
-KPI Definitions for Driver Analysis Chatbot
+KPI Definitions for Decision Insights Copilot
 
 Data Center / Hyperscaler
 Category: Sector demand indicator
@@ -282,7 +302,7 @@ def _select_tables(question: str) -> dict:
         return {"status": "answerable", "tables": [{"table_name": fallback_table, "question_part": question}]}
 
     prompt = f"""
-You are selecting the correct SQL table(s) for a Driver Analysis Chatbot.
+You are selecting the correct SQL table(s) for a Decision Insights Copilot.
 
 Your job:
 Decide whether the user's question can be answered using the structured SQL tables.
@@ -511,6 +531,22 @@ def structured_data_tool(question: str) -> str:
         _emit_step("Structured data", "Returned tool results to assistant.")
         result = json.dumps({"status": "success", "sql": sql_used, "data": final_rows}, indent=2, default=str)
         _cache_structured_result(question, result)
+        # Save result to CSV for Plotly pipeline
+        try:
+            STRUCTURED_RESULTS_DIR.mkdir(parents=True, exist_ok=True)
+            cid = _CURRENT_CID.get("value", "unknown")
+            ts = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+            csv_path = STRUCTURED_RESULTS_DIR / f"{cid}_{ts}.csv"
+            rows_to_save = []
+            for table_rows in final_rows.values():
+                if isinstance(table_rows, list) and table_rows:
+                    rows_to_save = table_rows
+                    break
+            if rows_to_save:
+                pd.DataFrame(rows_to_save).to_csv(csv_path, index=False)
+                _LAST_CSV_PATH["path"] = str(csv_path)
+        except Exception:
+            pass
         return result
     except Exception as exc:
         return json.dumps({"status": "error", "message": str(exc)}, indent=2)
@@ -720,124 +756,192 @@ def _fallback_unstructured_answer(question: str, content: str) -> str:
     return json.dumps({"status": "success", "answer": scored[0][1][:1200]}, indent=2)
 
 
-PLOTTING_CODE_PROMPT = """
-You are a Python plotting code generator for a Driver Analysis Chatbot.
+# --- Plotly plotting pipeline ---
 
-Your job:
-Generate executable Python code that plots data available in previous conversation messages.
-
-Inputs:
-1. Current user plot request
-2. Previous 10 conversation messages
-
-Important:
-- The previous messages may contain structured JSON results from tools.
-- The previous messages may also contain summarized assistant text with bullet lists.
-- Extract the data from the previous messages and manually create a pandas DataFrame in the generated code.
-- Do not assume external variables exist except pd and plt.
-- Do not read files.
-- Do not call APIs.
-- Do not fetch new data.
-- Do not invent values.
-
-Chart selection rules:
-- Use a line plot for chronological, monthly, quarterly, yearly, time-series, trend, or over-time data.
-- Use a dual-axis line plot with ax1.twinx() when two time-series are plotted together and their values are on very different scales.
-- Use a normal multi-line plot when two or more time-series have comparable scales.
-- Use a bar plot for categorical comparisons, driver comparisons, scenario comparisons, or rankings.
-- Use a horizontal bar plot when category labels are long.
-- Use a waterfall-style bar chart for contribution, bridge, decomposition, or impact breakdown.
-- Use a pie chart only for simple part-to-whole share questions with a small number of categories.
-- If the user explicitly asks for a chart type, follow that chart type unless it is clearly unsuitable.
-
-Follow-up plot requests:
-- If the user says "plot this", "plot this please", "chart this", "graph this", or "plot the above", use the most recent structured data or assistant-provided data from previous messages.
-- Do not ask the user to provide the data again if usable data exists in previous messages.
-
-Required code rules:
-- Return only JSON.
-- The JSON must contain executable Python code as a string.
-- The generated code must import pandas as pd and matplotlib.pyplot as plt.
-- The generated code must create a DataFrame explicitly from extracted data.
-- The generated code must create a figure using plt.figure(...) or plt.subplots(...).
-- The generated code must set a clear title.
-- The generated code must set clear axis labels.
-- The generated code must call plt.tight_layout().
-- The generated code must call plt.show() as the final plotting command.
-- Do not save the figure in generated code.
-- Do not use seaborn.
-- Do not use plotly.
-- Do not use markdown.
-- Do not wrap code in triple backticks.
-
-For dual-axis line plots:
-- Use fig, ax1 = plt.subplots(figsize=(10, 5)).
-- Use ax2 = ax1.twinx().
-- Plot the first series on ax1 and the second series on ax2.
-- Set both y-axis labels clearly.
-- Combine legends from both axes.
-- Call fig.autofmt_xdate(rotation=30).
-- Call plt.tight_layout().
-- Call plt.show().
-
-For normal line plots:
-- Convert date/month columns using pd.to_datetime when possible.
-- Sort by the date/month column.
-- Use markers for readability.
-- Rotate x-axis labels if needed.
-- Call plt.show().
-
-For bar plots:
-- Use plt.bar(...) or plt.barh(...).
-- Rotate labels if needed.
-- Call plt.show().
-
-Output format if plot code can be generated:
-{
-  "status": "ready_to_plot",
-  "code": "import pandas as pd\\nimport matplotlib.pyplot as plt\\n..."
-}
-
-Output format if no usable data exists:
-{
-  "status": "no_data_found",
-  "message": "No usable data found in previous messages for plotting."
-}
-
-Quality check before returning:
-- The code must be complete and runnable by exec().
-- The code must create and display exactly one chart.
-- The code must not reference undefined variables.
-- The code must not contain markdown or explanations.
-- The code must include plt.show().
-"""
+_ABB_COLORS = ["#FF000F", "#19202C", "#2563EB", "#10B981", "#F59E0B", "#7C3AED"]
 
 
-def _generate_plot_code(plot_request: str, previous_messages: str) -> dict:
+def _abb_layout(fig, title: str, x_label: str, y_label: str):
+    DARK = "#111827"
+    MID = "#1d2939"
+    fig.update_layout(
+        title=dict(
+            text=f"<b>{title}</b>",
+            font=dict(size=20, color=DARK, family="Arial"),
+            x=0,
+            xanchor="left",
+        ),
+        xaxis_title=x_label,
+        yaxis_title=y_label,
+        plot_bgcolor="white",
+        paper_bgcolor="white",
+        font=dict(family="Arial", size=14, color=MID),
+        xaxis=dict(
+            showgrid=False,
+            linecolor="#D1D5DB",
+            linewidth=1,
+            tickfont=dict(size=13, color=MID, family="Arial"),
+            title_font=dict(size=15, color=DARK, family="Arial"),
+        ),
+        yaxis=dict(
+            showgrid=True,
+            gridcolor="#F3F4F6",
+            gridwidth=1,
+            linecolor="#D1D5DB",
+            tickfont=dict(size=13, color=MID, family="Arial"),
+            title_font=dict(size=15, color=DARK, family="Arial"),
+        ),
+        legend=dict(bgcolor="rgba(0,0,0,0)", bordercolor="#E5E7EB", borderwidth=1, font=dict(size=13, color=MID)),
+        margin=dict(l=80, r=40, t=70, b=70),
+        height=480,
+    )
+
+
+def _plot_line(df, x_col: str, y_cols: List[str], title: str, x_label: str, y_label: str):
+    import plotly.graph_objects as go
+    fig = go.Figure()
+    for i, col in enumerate(y_cols):
+        fig.add_trace(go.Scatter(
+            x=df[x_col], y=df[col],
+            mode="lines+markers",
+            name=col.replace("_", " ").title(),
+            line=dict(color=_ABB_COLORS[i % len(_ABB_COLORS)], width=2.5),
+            marker=dict(size=5),
+        ))
+    _abb_layout(fig, title, x_label, y_label)
+    return fig
+
+
+def _plot_bar(df, x_col: str, y_cols: List[str], title: str, x_label: str, y_label: str):
+    import plotly.graph_objects as go
+    fig = go.Figure()
+    for i, col in enumerate(y_cols):
+        fig.add_trace(go.Bar(
+            x=df[x_col], y=df[col],
+            name=col.replace("_", " ").title(),
+            marker_color=_ABB_COLORS[i % len(_ABB_COLORS)],
+            marker_line=dict(width=0),
+        ))
+    fig.update_layout(barmode="group")
+    _abb_layout(fig, title, x_label, y_label)
+    return fig
+
+
+def _plot_waterfall(df, x_col: str, value_col: str, title: str, x_label: str, y_label: str):
+    import plotly.graph_objects as go
+    n = len(df)
+    if n < 3:
+        return _plot_bar(df, x_col, [value_col], title, x_label, y_label)
+    measure = ["absolute"] + ["relative"] * (n - 2) + ["total"]
+    fig = go.Figure(go.Waterfall(
+        orientation="v",
+        measure=measure,
+        x=df[x_col].tolist(),
+        y=df[value_col].tolist(),
+        connector=dict(line=dict(color="#D1D5DB", width=1, dash="dot")),
+        increasing=dict(marker=dict(color="#FF000F")),
+        decreasing=dict(marker=dict(color="#48556A")),
+        totals=dict(marker=dict(color="#19202C")),
+        textposition="outside",
+        textfont=dict(size=9),
+    ))
+    _abb_layout(fig, title, x_label, y_label)
+    return fig
+
+
+def _get_plot_spec(plot_request: str, df) -> PlotSpec:
     llm = _build_llm()
     if llm is None:
-        return {
-            "status": "no_data_found",
-            "message": "Plot code generator LLM is unavailable.",
-        }
+        numeric_cols = df.select_dtypes(include="number").columns.tolist()
+        return PlotSpec(
+            chart_type="bar",
+            x_col=df.columns[0],
+            y_cols=numeric_cols[:1] if numeric_cols else [df.columns[-1]],
+            title="Data Plot",
+            x_label=df.columns[0],
+            y_label="Value",
+        )
+    col_info = "\n".join(
+        f"  - {col} ({df[col].dtype}): sample={df[col].iloc[0] if len(df) > 0 else 'N/A'}"
+        for col in df.columns
+    )
+    prompt = f"""Choose the best Plotly chart type and column mappings.
 
-    cache_context = _structured_cache_context()
-    full_previous_messages = previous_messages
-    if cache_context:
-        full_previous_messages = f"{previous_messages}\n\n{cache_context}".strip()
+Columns:
+{col_info}
 
-    prompt = f"""
-{PLOTTING_CODE_PROMPT}
+Sample (first 3 rows):
+{df.head(3).to_string(index=False)}
 
-Current user plot request:
-{plot_request}
+User request: {plot_request}
 
-Previous 10 conversation messages:
-{full_previous_messages}
-"""
-    _emit_step("Plot code generator", "Generating executable Matplotlib code.")
-    response = llm.invoke([SystemMessage(content=prompt), HumanMessage(content=plot_request)])
-    return _parse_json_response(response.content)
+Rules:
+- line: time-series, trends over time, date/month columns present
+- bar: categorical comparisons, rankings, driver comparison
+- waterfall: contribution/decomposition breakdown (needs >= 3 rows: base, deltas, total)
+- x_col: the category or time axis column name (must exist in the columns list above)
+- y_cols: one or more numeric column names to plot (must exist in the columns list above)
+- For waterfall: exactly one y_col
+- title: descriptive business-friendly title
+- x_label / y_label: clear axis labels"""
+    structured_llm = ChatOpenAI(
+        model=os.getenv("OPENAI_MODEL", "gpt-4.1"),
+        api_key=os.getenv("OPENAI_API_KEY"),
+        temperature=0,
+    ).with_structured_output(PlotSpec)
+    _emit_step("Plot spec", "LLM selecting chart type and axis columns.")
+    return structured_llm.invoke(prompt)
+
+
+def _run_plotly_pipeline(plot_request: str, csv_path: str) -> str:
+    if not csv_path or not Path(csv_path).exists():
+        return json.dumps({"status": "no_data_found", "message": "No structured data available. Run a data query first."})
+    try:
+        df = pd.read_csv(csv_path)
+    except Exception as exc:
+        return json.dumps({"status": "error", "message": f"Could not read data: {exc}"})
+    if df.empty:
+        return json.dumps({"status": "no_data_found", "message": "Data is empty, nothing to plot."})
+    try:
+        spec = _get_plot_spec(plot_request, df)
+    except Exception as exc:
+        return json.dumps({"status": "error", "message": f"Chart spec generation failed: {exc}"})
+    # Validate columns exist
+    if spec.x_col not in df.columns:
+        spec.x_col = df.columns[0]
+    spec.y_cols = [c for c in spec.y_cols if c in df.columns]
+    if not spec.y_cols:
+        numeric_cols = df.select_dtypes(include="number").columns.tolist()
+        spec.y_cols = [numeric_cols[0]] if numeric_cols else [df.columns[-1]]
+    # Waterfall fallback
+    if spec.chart_type == "waterfall" and len(df) < 3:
+        spec.chart_type = "bar"
+    try:
+        if spec.chart_type == "line":
+            fig = _plot_line(df, spec.x_col, spec.y_cols, spec.title, spec.x_label, spec.y_label)
+        elif spec.chart_type == "waterfall":
+            fig = _plot_waterfall(df, spec.x_col, spec.y_cols[0], spec.title, spec.x_label, spec.y_label)
+        else:
+            fig = _plot_bar(df, spec.x_col, spec.y_cols, spec.title, spec.x_label, spec.y_label)
+    except Exception as exc:
+        return json.dumps({"status": "error", "message": f"Plot rendering failed: {exc}"})
+    PLOTS_DIR.mkdir(exist_ok=True)
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+    plot_path = PLOTS_DIR / f"{ts}_plotly.png"
+    latest_plot_path = PLOTS_DIR / "latest_plot.png"
+    try:
+        fig.write_image(str(plot_path), width=960, height=480, scale=2)
+        shutil.copy(str(plot_path), str(latest_plot_path))
+    except Exception as exc:
+        return json.dumps({"status": "error", "message": f"Plot save failed: {exc}"})
+    _emit_step("Plot generated", f"Saved {plot_path.name} ({spec.chart_type}).")
+    _REQUEST_PLOT["path"] = str(plot_path)
+    _REQUEST_PLOT["latest"] = str(latest_plot_path)
+    return (
+        f"Plot generated at: {plot_path}\n"
+        f"Latest plot copy: {latest_plot_path}\n"
+        "Plot displayed successfully."
+    )
 
 
 def _is_followup_plot_request(plot_request: str) -> bool:
@@ -847,319 +951,27 @@ def _is_followup_plot_request(plot_request: str) -> bool:
     return any(
         phrase in normalized
         for phrase in [
-            "plot this",
-            "plot it",
-            "chart this",
-            "chart it",
-            "generate line plot",
-            "line plot",
-            "bar plot",
-            "waterfall",
-            "pie chart",
+            "plot this", "plot it", "chart this", "chart it",
+            "generate line plot", "line plot", "bar plot", "waterfall", "pie chart",
         ]
     )
 
 
-def _fallback_plot_plan_from_cache(plot_request: str) -> dict:
-    cached_result = LAST_STRUCTURED_RESULT.get("result")
-    if not cached_result:
-        return {"status": "no_data_found", "message": "No cached structured data is available for plotting."}
-
-    try:
-        parsed = json.loads(cached_result)
-    except json.JSONDecodeError:
-        return {"status": "no_data_found", "message": "Cached structured data could not be parsed."}
-
-    table_data = parsed.get("data", {})
-    rows = []
-    for table_rows in table_data.values():
-        if isinstance(table_rows, list) and table_rows:
-            rows = table_rows
-            break
-
-    if not rows:
-        return {"status": "no_data_found", "message": "Cached structured data has no rows to plot."}
-
-    first_row = rows[0]
-    x_column = _infer_x_column(first_row)
-    numeric_columns = _infer_numeric_columns(first_row, x_column)
-    if not x_column or not numeric_columns:
-        return {"status": "no_data_found", "message": "Cached data does not contain plottable columns."}
-
-    normalized_request = plot_request.lower()
-    chart_type = "bar"
-    if any(term in normalized_request for term in ["line", "trend", "monthly", "over time", "time series"]):
-        chart_type = "line"
-    elif "waterfall" in normalized_request:
-        chart_type = "waterfall"
-    elif "pie" in normalized_request:
-        chart_type = "pie"
-    elif "horizontal" in normalized_request:
-        chart_type = "horizontal_bar"
-
-    if _looks_like_date_column(x_column, rows):
-        chart_type = "line" if "bar" not in normalized_request else chart_type
-
-    y_column = numeric_columns if chart_type in {"line", "bar"} and len(numeric_columns) > 1 else numeric_columns[0]
-    return {
-        "status": "ready_to_plot",
-        "chart_type": chart_type,
-        "title": "Structured Data Plot",
-        "x_column": x_column,
-        "y_column": y_column,
-        "data": rows,
-        "x_label": x_column.replace("_", " ").title(),
-        "y_label": "Value",
-        "reason": "Used the latest cached structured data returned by the structured tool.",
-    }
-
-
-def _infer_x_column(row: dict) -> str:
-    for preferred in ["date", "month", "year", "division", "selected_driver_name"]:
-        if preferred in row:
-            return preferred
-    for key, value in row.items():
-        if not _is_number_like(value):
-            return key
-    return next(iter(row.keys()), "")
-
-
-def _infer_numeric_columns(row: dict, x_column: str) -> list[str]:
-    excluded = {x_column, "year", "baseline_year", "forecast_year"}
-    return [
-        key
-        for key, value in row.items()
-        if key not in excluded and _is_number_like(value)
-    ]
-
-
-def _is_number_like(value) -> bool:
-    try:
-        float(value)
-        return True
-    except (TypeError, ValueError):
-        return False
-
-
-def _looks_like_date_column(column: str, rows: list[dict]) -> bool:
-    if column.lower() == "date":
-        return True
-    if not rows:
-        return False
-    sample = str(rows[0].get(column, ""))
-    try:
-        datetime.fromisoformat(sample)
-        return True
-    except ValueError:
-        return False
-
-
-def _run_generated_plot_code(code: str) -> dict:
-    MPL_CONFIG_DIR.mkdir(exist_ok=True)
-    os.environ.setdefault("MPLCONFIGDIR", str(MPL_CONFIG_DIR))
-
-    import matplotlib
-
-    matplotlib.use("Agg")
-    import matplotlib.pyplot as plt
-    import pandas as pd
-    import shutil
-
-    PLOTS_DIR.mkdir(exist_ok=True)
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
-    plot_path = PLOTS_DIR / f"{timestamp}_generated.png"
-    latest_plot_path = PLOTS_DIR / "latest_plot.png"
-    saved = {"done": False}
-
-    original_show = plt.show
-
-    def save_and_show(*args, **kwargs):
-        figure = plt.gcf()
-        figure.tight_layout()
-        figure.savefig(plot_path, dpi=150, bbox_inches="tight")
-        shutil.copyfile(plot_path, latest_plot_path)
-        saved["done"] = True
-        plt.close(figure)
-
-    safe_globals = {
-        "__builtins__": {
-            "abs": abs,
-            "all": all,
-            "any": any,
-            "dict": dict,
-            "enumerate": enumerate,
-            "float": float,
-            "int": int,
-            "len": len,
-            "list": list,
-            "max": max,
-            "min": min,
-            "range": range,
-            "round": round,
-            "set": set,
-            "sorted": sorted,
-            "str": str,
-            "sum": sum,
-            "tuple": tuple,
-            "__import__": __import__,
-        },
-        "pd": pd,
-        "plt": plt,
-    }
-
-    try:
-        plt.show = save_and_show
-        exec(code, safe_globals, {})
-        if not saved["done"]:
-            save_and_show()
-    finally:
-        plt.show = original_show
-
-    return {
-        "status": "plot_displayed_successfully",
-        "message": "Plot displayed successfully.",
-        "plot_path": str(plot_path),
-        "latest_plot_path": str(latest_plot_path),
-    }
-
-
-def _generate_code_from_fallback_plan(plot_plan: dict) -> str:
-    """
-    Deterministically creates matplotlib code from cached structured rows.
-    This avoids relying on the LLM when the data is already available.
-    """
-
-    data = plot_plan.get("data", [])
-    chart_type = plot_plan.get("chart_type", "bar")
-    title = plot_plan.get("title", "Structured Data Plot")
-    x_column = plot_plan.get("x_column")
-    y_column = plot_plan.get("y_column")
-    x_label = plot_plan.get("x_label", x_column or "")
-    y_label = plot_plan.get("y_label", "Value")
-
-    # y_column can be a list for multi-series plots
-    if isinstance(y_column, list):
-        y_columns = y_column
-    else:
-        y_columns = [y_column]
-
-    return f"""
-import pandas as pd
-import matplotlib.pyplot as plt
-
-data = {json.dumps(data, default=str)}
-df = pd.DataFrame(data)
-
-x_column = {repr(x_column)}
-y_columns = {repr(y_columns)}
-chart_type = {repr(chart_type)}
-
-if x_column not in df.columns:
-    raise ValueError(f"Missing x column: {{x_column}}")
-
-for col in y_columns:
-    if col not in df.columns:
-        raise ValueError(f"Missing y column: {{col}}")
-    df[col] = pd.to_numeric(df[col], errors="coerce")
-
-if x_column == "date":
-    df[x_column] = pd.to_datetime(df[x_column], errors="coerce")
-    df = df.dropna(subset=[x_column]).sort_values(x_column)
-
-plt.figure(figsize=(10, 5))
-
-if chart_type == "line":
-    for col in y_columns:
-        plt.plot(df[x_column], df[col], marker="o", label=col.replace("_", " ").title())
-    plt.legend(loc="best")
-    plt.xticks(rotation=30, ha="right")
-
-elif chart_type == "horizontal_bar":
-    y_col = y_columns[0]
-    df = df.sort_values(y_col)
-    plt.barh(df[x_column].astype(str), df[y_col])
-
-elif chart_type == "waterfall":
-    y_col = y_columns[0]
-    df["start"] = df[y_col].cumsum().shift(fill_value=0)
-    plt.bar(df[x_column].astype(str), df[y_col], bottom=df["start"])
-    plt.axhline(0, linewidth=0.8)
-    plt.xticks(rotation=30, ha="right")
-
-elif chart_type == "pie":
-    y_col = y_columns[0]
-    plt.pie(df[y_col], labels=df[x_column].astype(str), autopct="%1.1f%%", startangle=90)
-    plt.axis("equal")
-
-else:
-    y_col = y_columns[0]
-    plt.bar(df[x_column].astype(str), df[y_col])
-    plt.xticks(rotation=30, ha="right")
-
-if chart_type != "pie":
-    plt.xlabel({repr(x_label)})
-    plt.ylabel({repr(y_label)})
-
-plt.title({repr(title)})
-plt.tight_layout()
-plt.show()
-"""
-
-
-
 @tool
-def plot_tool(plot_request: str, previous_messages: str) -> str:
-    """Use only when the user explicitly asks for a plot, chart, graph, visual, or trend chart.
+def plot_tool(plot_request: str) -> str:
+    """Use only when the user explicitly asks for a plot, chart, graph, or visualization.
 
-    This plotter uses data already available in previous conversation messages.
-    The assistant must pass the last 10 messages as readable text in
-    previous_messages. Do not use this for normal structured lookup,
-    definitions, simulations, or feedback capture.
+    Generates a Plotly chart from the most recent structured data retrieved in this
+    conversation. Do not call this after structured_data_tool — a plot is already
+    automatically generated then. Only call this when the user explicitly requests
+    a different or additional visualization.
     """
-    try:
-        # 1. Try LLM-generated plotting code first
-        plot_plan = _generate_plot_code(plot_request, previous_messages)
+    csv_path = _LAST_CSV_PATH.get("path", "")
+    _emit_step("Plot tool", "Generating Plotly chart from latest structured data.")
+    return _run_plotly_pipeline(plot_request, csv_path)
 
-        code = ""
-        if plot_plan.get("status") == "ready_to_plot":
-            code = plot_plan.get("code", "").strip()
 
-        # 2. If LLM did not generate usable code, fallback to cached structured data
-        if not code:
-            _emit_step("Plot fallback", "LLM did not generate usable plot code. Falling back to cached structured data.")
-            fallback_plan = _fallback_plot_plan_from_cache(plot_request)
-
-            if fallback_plan.get("status") == "no_data_found":
-                return json.dumps(fallback_plan, indent=2)
-
-            code = _generate_code_from_fallback_plan(fallback_plan)
-
-        # 3. Run code. If running LLM code fails, fallback once more.
-        try:
-            result = _run_generated_plot_code(code)
-        except Exception:
-            _emit_step("Plot fallback", "Generated plot code failed. Falling back to deterministic plot code.")
-            fallback_plan = _fallback_plot_plan_from_cache(plot_request)
-
-            if fallback_plan.get("status") == "no_data_found":
-                return json.dumps(fallback_plan, indent=2)
-
-            code = _generate_code_from_fallback_plan(fallback_plan)
-            result = _run_generated_plot_code(code)
-
-        if result.get("status") != "plot_displayed_successfully":
-            return json.dumps(result, indent=2, default=str)
-
-        return (
-            f"Plot generated at: {result['plot_path']}\n"
-            f"Latest plot copy: {result['latest_plot_path']}\n"
-            "Plot displayed successfully."
-        )
-
-    except Exception as exc:
-        return json.dumps({"status": "error", "message": str(exc)}, indent=2)
-    
-
+# --- end Plotly pipeline ---
 
 TOOLS = [
     structured_data_tool,
@@ -1194,9 +1006,43 @@ def _to_langchain_messages(history):
     return messages
 
 
+def build_summarization_prompt() -> str:
+    return """You are a business intelligence summarization assistant. Your output is rendered as Markdown in a UI — formatting will be visible to the user.
+
+STRICT FORMATTING RULES — you MUST follow exactly:
+1. Wrap ALL numbers, dollar amounts, percentages, and named metrics in **double asterisks** so they appear bold. Example: **$722.2M**, **+34%**, **ELSP**, **Q1 2024**.
+2. Always prefix growth/positive values with `+` and declines with `-` and wrap in bold. Example: **+34%**, **-7.2%**.
+3. Start every section with a **bold heading** followed by a colon. Example: **Key Findings:**
+4. Use bullet points (`-`) for every data point or finding. Do not write long prose paragraphs.
+5. End with a bold one-line summary. Example: **Overall, ELSP orders grew +34% from 2021 to 2025.**
+
+EXAMPLE of correct output format:
+**Overview:**
+- Start value: **$722.2M** in **Jan 2021**
+- End value: **$964.7M** in **Feb 2025**
+- Total growth: **+33.6%** over **4 years**
+
+**Year-by-Year Highlights:**
+- **2021:** Orders ranged from **$722.2M** to **$755.3M**
+- **2022:** Orders rose to **$825.0M** — a **+9.2%** increase
+- **2023:** Reached **$880.2M** by December
+- **2024:** Stabilized between **$913.9M** and **$930.0M**
+- **Early 2025:** Hit a new high of **$964.7M**
+
+**ELSP orders delivered a consistent upward trend of +33.6% over four years with no significant reversals.**
+
+Content rules:
+- Answer ONLY from the data provided — no hallucination.
+- Use plain business language — no SQL, tool names, or technical jargon.
+- For time-series: include start value, end value, total growth %, and year-by-year highlights.
+- For simulation: state the result clearly with the computed number. Do not mention alpha.
+- For KPI definitions: use bullets for each concept.
+- Do not add follow-up questions or closing remarks."""
+
+
 def build_assistant_system_prompt() -> str:
     return f"""
-You are a Driver Analysis Chatbot assistant for a demo knowledge base.
+You are a Decision Insights Copilot assistant for a demo knowledge base.
 
 You help users with:
 1. structured driver-analysis data
@@ -1251,10 +1097,12 @@ Use this only when the user explicitly asks for:
 - waterfall chart
 - pie chart
 
-The plot_tool uses data from previous conversation messages.
-When calling plot_tool, pass:
+IMPORTANT: A Plotly chart is automatically generated every time structured_data_tool returns data.
+Do NOT call plot_tool immediately after structured_data_tool — the auto-plot already handled it.
+Only call plot_tool when the user explicitly requests a different or additional chart.
+
+When calling plot_tool, pass only:
 - plot_request: the current user plot request
-- previous_messages: the last 10 conversation messages as readable text, including any data returned by previous tools.
 
 4. simulation_tool
 Use this when the user asks for:
@@ -1275,6 +1123,7 @@ Important routing rules:
 - Do not use structured_data_tool for KPI definitions or KPI business meaning.
 - Do not use unstructured_kpi_tool for selected drivers, elasticities, ranges, forecasts, contributions, or monthly data.
 - Do not use plot_tool unless the user explicitly asks for a visual.
+- Do not call plot_tool after structured_data_tool — a chart is auto-generated after every structured data result.
 - Do not use structured_data_tool again for "plot this", "chart this", or "graph the above" if the needed data is already available in recent conversation.
 - Do not invent values. If data is needed, call the correct tool.
 
@@ -1321,10 +1170,8 @@ then do not call structured_data_tool again if the required data is already avai
 
 Instead, call plot_tool directly and pass:
 - plot_request: the current user plot request
-- previous_messages: the last 10 conversation messages as readable text, including previous tool outputs or assistant-generated summaries/data
 
-If the previous messages already contain the needed data, use that data for plotting.
-Only fetch data again if the required data is not available in the recent conversation.
+The plot will be generated from the most recent structured data CSV. Only fetch data again if the required data is not available in the recent conversation.
 
 Conversation closing:
 - At the end of every completed answer, politely ask: "Can I help you with anything else?"
@@ -1351,14 +1198,18 @@ class BubuAgent:
         workflow.add_node("assistant", self._assistant_node)
         workflow.add_node("tools", ToolNode(TOOLS))
         workflow.add_node("tool_result_trace", self._tool_result_trace_node)
+        workflow.add_node("auto_plot_check", self._auto_plot_check_node)
+        workflow.add_node("summarization", self._summarization_node)
         workflow.add_edge(START, "assistant")
         workflow.add_conditional_edges(
             "assistant",
             self._assistant_router,
-            {"tools": "tools", END: END},
+            {"tools": "tools", "summarization": "summarization"},
         )
         workflow.add_edge("tools", "tool_result_trace")
-        workflow.add_edge("tool_result_trace", "assistant")
+        workflow.add_edge("tool_result_trace", "auto_plot_check")
+        workflow.add_edge("auto_plot_check", "assistant")
+        workflow.add_edge("summarization", END)
         return workflow.compile()
 
     def _assistant_node(self, state: MessagesState):
@@ -1378,7 +1229,7 @@ class BubuAgent:
         last_message = state["messages"][-1]
         if getattr(last_message, "tool_calls", None):
             return "tools"
-        return END
+        return "summarization"
 
     def _tool_result_trace_node(self, state: MessagesState):
         last_message = state["messages"][-1]
@@ -1397,6 +1248,55 @@ class BubuAgent:
                 pass
         _emit_step("Tool result", detail)
         return {"messages": []}
+
+    def _auto_plot_check_node(self, state: MessagesState) -> dict:
+        messages = state["messages"]
+        for msg in reversed(messages):
+            name = getattr(msg, "name", None)
+            if name is None:
+                continue
+            if name == "structured_data_tool":
+                try:
+                    content = json.loads(str(msg.content or ""))
+                    if content.get("status") != "success":
+                        return {"messages": []}
+                except Exception:
+                    return {"messages": []}
+                user_q = LAST_STRUCTURED_RESULT.get("question", "generate a plot")
+                csv_path = _LAST_CSV_PATH.get("path", "")
+                if not csv_path:
+                    return {"messages": []}
+                _emit_step("Auto-plot", "Automatically generating Plotly chart after structured data retrieval.")
+                plot_result = _run_plotly_pipeline(user_q, csv_path)
+                return {"messages": [SystemMessage(content=f"[Auto-generated plot]\n{plot_result}")]}
+            break  # only check the most recent tool message
+        return {"messages": []}
+
+    def _summarization_node(self, state: MessagesState):
+        messages = state["messages"]
+
+        user_question = ""
+        for msg in reversed(messages):
+            if isinstance(msg, HumanMessage):
+                user_question = str(msg.content)
+                break
+
+        relevant_tools = ("structured_data_tool", "unstructured_kpi_tool", "simulation_tool")
+        tool_parts = []
+        for msg in messages:
+            name = getattr(msg, "name", None)
+            if name in relevant_tools:
+                tool_parts.append(f"[{name}]\n{msg.content}")
+
+        tool_data_str = "\n\n".join(tool_parts) if tool_parts else "No tool data retrieved."
+        summarization_input = f"User question: {user_question}\n\nTool results:\n{tool_data_str}"
+
+        _emit_step("Summarization", "Generating final summary.")
+        response = self.llm.invoke([
+            SystemMessage(content=build_summarization_prompt()),
+            HumanMessage(content=summarization_input),
+        ])
+        return {"messages": [response]}
 
     def _emit_graph_update(self, update: dict):
         for node_name, node_update in update.items():
@@ -1423,6 +1323,10 @@ class BubuAgent:
                     _emit_step("Graph", "Tools node completed.")
             elif node_name == "tool_result_trace":
                 _emit_step("Graph", "Tool result trace node completed.")
+            elif node_name == "auto_plot_check":
+                _emit_step("Graph", "Auto-plot check node completed.")
+            elif node_name == "summarization":
+                _emit_step("Graph", "Summarization node completed.")
             else:
                 _emit_step("Graph", f"{node_name} node completed.")
 
@@ -1450,8 +1354,7 @@ class BubuAgent:
                         {
                             "type": "node",
                             "node": "assistant",
-                            "message": "Assistant prepared final answer.",
-                            "content": last_message.content,
+                            "message": "Assistant routing to summarization.",
                         }
                     )
             elif node_name == "tools":
@@ -1475,6 +1378,27 @@ class BubuAgent:
                         "message": "Tool result trace node completed.",
                     }
                 )
+            elif node_name == "auto_plot_check":
+                events.append(
+                    {
+                        "type": "node",
+                        "node": "auto_plot_check",
+                        "message": "Auto-plot check node completed.",
+                    }
+                )
+            elif node_name == "summarization":
+                messages = node_update.get("messages", []) if isinstance(node_update, dict) else []
+                if messages:
+                    events.append(
+                        {
+                            "type": "node",
+                            "node": "summarization",
+                            "message": "Summarization completed.",
+                            "content": messages[-1].content,
+                        }
+                    )
+                else:
+                    events.append({"type": "node", "node": "summarization", "message": "Summarization node completed."})
             else:
                 events.append({"type": "node", "node": node_name, "message": f"{node_name} node completed."})
         return events
@@ -1486,10 +1410,16 @@ class BubuAgent:
             yield {"type": "delta", "text": f"{word}{suffix}"}
             time.sleep(0.025)
 
-    def respond_stream(self, user_message, history=None):
+    def respond_stream(self, user_message, history=None, conversation_id: str = ""):
+        _tl.cid = conversation_id
+        _CURRENT_CID["value"] = conversation_id or "unknown"
+        _REQUEST_PLOT["path"] = ""
+        _REQUEST_PLOT["latest"] = ""
+        LAST_STRUCTURED_RESULT.clear()
+        _LAST_CSV_PATH["path"] = ""
         history = history or []
         normalized = user_message.strip().lower()
-        conversation_context = _conversation_context(history, user_message)
+        print(f"[respond_stream] conversation_id={conversation_id} | history_msgs={len(history)}")
 
         yield {"type": "node", "node": "assistant", "message": "Assistant received user message."}
 
@@ -1505,7 +1435,6 @@ class BubuAgent:
             tool_result = plot_tool.invoke(
                 {
                     "plot_request": user_message,
-                    "previous_messages": f"{conversation_context}\n\n{structured_context}",
                 }
             )
             yield {"type": "node", "node": "tools", "message": "Tools returned result from plot_tool."}
@@ -1519,16 +1448,15 @@ class BubuAgent:
             messages.append(
                 SystemMessage(
                     content=(
-                        "Latest raw structured result for plotting. Use this "
-                        "as previous_messages for plot_tool when the user asks "
-                        f"for a follow-up plot.\n{structured_context}"
+                        "Latest structured data is available for plotting. "
+                        "If the user asks for a follow-up plot, call plot_tool with just plot_request.\n"
+                        f"{structured_context}"
                     )
                 )
             )
         messages.append(HumanMessage(content=user_message))
 
         yield {"type": "node", "node": "assistant", "message": "Assistant started processing request."}
-        result = None
         final_content = ""
         for update in self.graph.stream(
             {"messages": messages},
@@ -1537,26 +1465,32 @@ class BubuAgent:
         ):
             for event in self._graph_update_events(update):
                 yield event
-                if event.get("content"):
+                if event.get("node") == "summarization" and event.get("content"):
                     final_content = event["content"]
-            for node_update in update.values():
-                if isinstance(node_update, dict) and "messages" in node_update:
-                    if result is None:
-                        result = {"messages": []}
-                    result["messages"].extend(node_update["messages"])
 
-        if not final_content and result and result.get("messages"):
-            final_content = result["messages"][-1].content
         if not final_content:
             final_content = "I could not complete that request."
+
+        if _REQUEST_PLOT.get("path"):
+            final_content += (
+                f"\nPlot generated at: {_REQUEST_PLOT['path']}\n"
+                f"Latest plot copy: {_REQUEST_PLOT['latest']}\n"
+                "Plot displayed successfully."
+            )
 
         yield {"type": "node", "node": "assistant", "message": "Assistant completed request."}
         yield {"type": "final", "content": final_content}
 
-    def respond(self, user_message, history=None):
+    def respond(self, user_message, history=None, conversation_id: str = ""):
+        _tl.cid = conversation_id
+        _CURRENT_CID["value"] = conversation_id or "unknown"
+        _REQUEST_PLOT["path"] = ""
+        _REQUEST_PLOT["latest"] = ""
+        LAST_STRUCTURED_RESULT.clear()
+        _LAST_CSV_PATH["path"] = ""
         history = history or []
         normalized = user_message.strip().lower()
-        conversation_context = _conversation_context(history, user_message)
+        print(f"[respond] conversation_id={conversation_id} | history_msgs={len(history)}")
         _emit_step("Assistant", "Received user message.")
 
         if normalized in {"no", "nothing", "done", "no thanks", "stop", "that's all", "thats all"}:
@@ -1565,12 +1499,7 @@ class BubuAgent:
         structured_context = _structured_cache_context()
         if structured_context and _is_followup_plot_request(user_message):
             _emit_step("Assistant", "Sending latest structured data to plotter.")
-            tool_result = plot_tool.invoke(
-                {
-                    "plot_request": user_message,
-                    "previous_messages": f"{conversation_context}\n\n{structured_context}",
-                }
-            )
+            tool_result = plot_tool.invoke({"plot_request": user_message})
             _emit_step("Assistant", "Completed request.")
             return f"{tool_result}\n\nCan I help you with anything else?"
 
@@ -1579,30 +1508,37 @@ class BubuAgent:
             messages.append(
                 SystemMessage(
                     content=(
-                        "Latest raw structured result for plotting. Use this "
-                        "as previous_messages for plot_tool when the user asks "
-                        f"for a follow-up plot.\n{structured_context}"
+                        "Latest structured data is available for plotting. "
+                        "If the user asks for a follow-up plot, call plot_tool with just plot_request.\n"
+                        f"{structured_context}"
                     )
                 )
             )
         messages.append(HumanMessage(content=user_message))
         _emit_step("Assistant", "Started processing request.")
-        result = None
+        final_content = ""
         for update in self.graph.stream(
             {"messages": messages},
             {"recursion_limit": 12},
             stream_mode="updates",
         ):
             self._emit_graph_update(update)
-            for node_update in update.values():
-                if isinstance(node_update, dict) and "messages" in node_update:
-                    if result is None:
-                        result = {"messages": []}
-                    result["messages"].extend(node_update["messages"])
+            if "summarization" in update:
+                node_update = update["summarization"]
+                if isinstance(node_update, dict):
+                    msgs = node_update.get("messages", [])
+                    if msgs:
+                        final_content = msgs[-1].content
         _emit_step("Assistant", "Completed request.")
-        if result is None or not result.get("messages"):
+        if not final_content:
             return "I could not complete that request."
-        return result["messages"][-1].content
+        if _REQUEST_PLOT.get("path"):
+            final_content += (
+                f"\nPlot generated at: {_REQUEST_PLOT['path']}\n"
+                f"Latest plot copy: {_REQUEST_PLOT['latest']}\n"
+                "Plot displayed successfully."
+            )
+        return final_content
 
 
 agent = BubuAgent()

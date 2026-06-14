@@ -7,3 +7,7 @@ python-dotenv
 matplotlib
 streamlit-mermaid
 openpyxl
+Pillow
+reportlab
+plotly
+kaleido

@@ -24,9 +24,8 @@ function formatConvTime(iso) {
 
 const showcaseMessage = {
   role: "assistant",
-  visibleText:
-    "ELSP orders declined by 18.7% in the last 6 months (Jan - Jun 2024 vs Jul - Dec 2023). The decline was driven primarily by weaker Data Center demand, partially offset by pricing benefits.",
-  plotUrls: ["/plots/showcase_contribution.png"],
+  visibleText: "",
+  plotUrls: [],
   closingText: "",
   showcase: true,
 };
@@ -42,7 +41,8 @@ function friendlyStatus(message = "") {
   if (lower.includes("selected tool")) return "Selecting the right tool";
   if (lower.includes("tools returned")) return "Reading tool results";
   if (lower.includes("tool result trace")) return "Reviewing retrieved data";
-  if (lower.includes("prepared final answer")) return "Preparing response";
+  if (lower.includes("summarization")) return "Summarizing results";
+  if (lower.includes("prepared final answer") || lower.includes("routing to summarization")) return "Preparing response";
   if (lower.includes("completed request")) return "Finishing up";
   if (lower.includes("plotter") || lower.includes("plot")) return "Generating visual";
   return "Working on it";
@@ -148,7 +148,251 @@ function KpiCard({ icon, iconClass = "", cardClass = "", title, subtitle, metric
   );
 }
 
-function Sidebar({ disabled, onSuggestion, onNewConversation, conversations, conversationId, onConversationClick }) {
+function BinIcon() {
+  return h("svg", { viewBox: "0 0 24 24", "aria-hidden": "true" },
+    h("path", { d: "M3 6h18" }),
+    h("path", { d: "M8 6V4h8v2" }),
+    h("path", { d: "M19 6l-1 14H6L5 6" })
+  );
+}
+
+function DownloadIcon() {
+  return h("svg", { viewBox: "0 0 24 24", "aria-hidden": "true" },
+    h("path", { d: "M12 3v13" }),
+    h("path", { d: "m7 11 5 5 5-5" }),
+    h("path", { d: "M5 20h14" })
+  );
+}
+
+function MailIcon() {
+  return h("svg", { viewBox: "0 0 24 24", "aria-hidden": "true" },
+    h("rect", { x: "2", y: "4", width: "20", height: "16", rx: "2" }),
+    h("path", { d: "m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7" })
+  );
+}
+
+function ConversationActions({ conversationId, conversationTitle, disabled }) {
+  const [recipients, setRecipients] = useState([]);
+  const [showPopover, setShowPopover] = useState(false);
+  const [addingNew, setAddingNew] = useState(false);
+  const [newName, setNewName] = useState("");
+  const [newEmail, setNewEmail] = useState("");
+  const [isDownloading, setIsDownloading] = useState(false);
+  const [sendingTo, setSendingTo] = useState(null);
+  const [sentTo, setSentTo] = useState(null);
+  const [statusMsg, setStatusMsg] = useState("");
+  const popoverRef = useRef(null);
+
+  useEffect(() => {
+    fetch("/api/recipients")
+      .then((r) => r.json())
+      .then((d) => setRecipients(d.recipients || []))
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    if (!showPopover) return;
+    function handleOutside(e) {
+      if (popoverRef.current && !popoverRef.current.contains(e.target)) {
+        setShowPopover(false);
+        setAddingNew(false);
+        setNewName("");
+        setNewEmail("");
+      }
+    }
+    document.addEventListener("mousedown", handleOutside);
+    return () => document.removeEventListener("mousedown", handleOutside);
+  }, [showPopover]);
+
+  async function downloadPdf() {
+    if (disabled || isDownloading) return;
+    setIsDownloading(true);
+    try {
+      const res = await fetch(`/api/conversations/${conversationId}/pdf`);
+      if (!res.ok) throw new Error("Failed");
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${conversationTitle || "conversation"}.pdf`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (_) {
+    } finally {
+      setIsDownloading(false);
+    }
+  }
+
+  async function addRecipient() {
+    const name = newName.trim();
+    const email = newEmail.trim();
+    if (!name || !email) return;
+    try {
+      const res = await fetch("/api/recipients", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, email }),
+      });
+      const data = await res.json();
+      setRecipients((prev) => [data, ...prev.filter((r) => r.id !== data.id)]);
+      setNewName("");
+      setNewEmail("");
+      setAddingNew(false);
+    } catch (_) {}
+  }
+
+  async function sendEmail(recipient) {
+    if (disabled || sendingTo) return;
+    setSendingTo(recipient.email);
+    setSentTo(null);
+    setStatusMsg("");
+    try {
+      const res = await fetch(`/api/conversations/${conversationId}/send-email`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: recipient.email, name: recipient.name || "" }),
+      });
+      const data = await res.json();
+      if (data.ok) {
+        setSentTo(recipient.email);
+        setStatusMsg(`Sent to ${recipient.email}`);
+      } else {
+        setStatusMsg("Failed to send. Try again.");
+      }
+    } catch (_) {
+      setStatusMsg("Failed to send. Try again.");
+    } finally {
+      setSendingTo(null);
+      setTimeout(() => {
+        setStatusMsg("");
+        setSentTo(null);
+      }, 3500);
+    }
+  }
+
+  async function deleteRecipient(id) {
+    try {
+      await fetch(`/api/recipients/${id}`, { method: "DELETE" });
+      setRecipients((prev) => prev.filter((r) => r.id !== id));
+    } catch (_) {}
+  }
+
+  return h(
+    "div",
+    { className: "conv-actions" },
+    h(
+      "button",
+      { type: "button", className: "conv-action-btn", disabled: disabled || isDownloading, onClick: downloadPdf, title: disabled ? "Start or open a conversation with messages first" : "Download conversation as PDF" },
+      h(DownloadIcon),
+      h("span", null, isDownloading ? "..." : "PDF")
+    ),
+    h(
+      "div",
+      { className: "email-btn-wrap", ref: popoverRef },
+      h(
+        "button",
+        {
+          type: "button",
+          className: `conv-action-btn${showPopover ? " active" : ""}`,
+          disabled,
+          onClick: () => setShowPopover((p) => !p),
+          title: disabled ? "Start or open a conversation with messages first" : "Send conversation via email",
+        },
+        h(MailIcon),
+        h("span", null, "Email")
+      ),
+      showPopover &&
+        h(
+          "div",
+          { className: "email-popover" },
+          h("div", { className: "popover-header" }, "Send via email"),
+          statusMsg &&
+            h(
+              "div",
+              { className: `popover-status ${statusMsg.startsWith("Sent") ? "success" : "error"}` },
+              statusMsg
+            ),
+          recipients.length === 0 && !addingNew &&
+            h("div", { className: "popover-empty" }, "No recipients yet. Add one below."),
+          recipients.map((r) =>
+            h(
+              "div",
+              { key: r.id, className: "recipient-row" },
+              h(
+                "span",
+                { className: "recipient-detail" },
+                h("strong", null, r.name || "Recipient"),
+                h("span", { className: "recipient-email" }, r.email)
+              ),
+              h(
+                "span",
+                { className: "recipient-actions" },
+                h(
+                  "button",
+                  {
+                    type: "button",
+                    className: `recipient-send-btn${sentTo === r.email ? " sent" : ""}`,
+                    disabled: sendingTo === r.email,
+                    onClick: () => sendEmail(r),
+                  },
+                  sendingTo === r.email
+                    ? h("span", { className: "mini-spinner" })
+                    : sentTo === r.email
+                      ? "Sent"
+                      : "Send"
+                ),
+                h(
+                  "button",
+                  {
+                    type: "button",
+                    className: "recipient-delete-btn",
+                    title: "Delete recipient",
+                    onClick: () => deleteRecipient(r.id),
+                  },
+                  h(BinIcon)
+                )
+              )
+            )
+          ),
+          addingNew
+            ? h(
+                "div",
+                { className: "add-recipient-form" },
+                h("input", {
+                  type: "text",
+                  placeholder: "Recipient name",
+                  value: newName,
+                  autoFocus: true,
+                  onChange: (e) => setNewName(e.target.value),
+                  onKeyDown: (e) => {
+                    if (e.key === "Enter") addRecipient();
+                    if (e.key === "Escape") { setAddingNew(false); setNewName(""); setNewEmail(""); }
+                  },
+                }),
+                h("input", {
+                  type: "email",
+                  placeholder: "email@example.com",
+                  value: newEmail,
+                  onChange: (e) => setNewEmail(e.target.value),
+                  onKeyDown: (e) => {
+                    if (e.key === "Enter") addRecipient();
+                    if (e.key === "Escape") { setAddingNew(false); setNewName(""); setNewEmail(""); }
+                  },
+                }),
+                h("button", { type: "button", className: "add-confirm-btn", onClick: addRecipient, disabled: !newName.trim() || !newEmail.trim() }, "Add")
+              )
+            : h(
+                "button",
+                { type: "button", className: "add-recipient-btn", onClick: () => setAddingNew(true) },
+                h("span", { className: "add-plus" }, "+"),
+                "Add recipient"
+              )
+        )
+    )
+  );
+}
+
+function Sidebar({ disabled, onSuggestion, onNewConversation, conversations, conversationId, onConversationClick, onDeleteConversation }) {
   return h(
     "aside",
     { className: "sidebar" },
@@ -156,7 +400,7 @@ function Sidebar({ disabled, onSuggestion, onNewConversation, conversations, con
       "div",
       { className: "brand-card" },
       h("img", { src: ABB_LOGO, alt: "ABB" }),
-      h("div", { className: "brand-title" }, "Driver Analysis Copilot")
+      h("div", { className: "brand-title" }, "Decision Insights Copilot")
     ),
     h(
       "section",
@@ -189,7 +433,14 @@ function Sidebar({ disabled, onSuggestion, onNewConversation, conversations, con
             onClick: () => !disabled && onConversationClick(conv.id),
           },
           h("span", { className: "recent-title" }, conv.title || "Untitled"),
-          h("time", null, formatConvTime(conv.updated_at))
+          h("span", { className: "conv-row-right" },
+            h("time", null, formatConvTime(conv.updated_at)),
+            h("button", {
+              className: "delete-conv-btn",
+              title: "Delete conversation",
+              onClick: (e) => { e.stopPropagation(); onDeleteConversation(conv.id); },
+            }, h(BinIcon))
+          )
         )
       )
     ),
@@ -272,11 +523,52 @@ function DashboardCards() {
   );
 }
 
+function colorizeNumbers(html) {
+  // Only colorize inside text nodes (not HTML tag attributes)
+  // Replace +X or +X% patterns with green, -X or -X% with red
+  return html
+    .replace(/(?<![=\w])(\+[\d,.]+%?)/g, '<span class="num-positive">$1</span>')
+    .replace(/(?<![=\w-])(-[\d,.]+%?)(?!\w)/g, '<span class="num-negative">$1</span>');
+}
+
+function MarkdownContent({ text, className }) {
+  const html = React.useMemo(() => {
+    if (!text || !window.marked) return text || "";
+    const raw = window.marked.parse(text);
+    return colorizeNumbers(raw);
+  }, [text]);
+  return h("div", {
+    className: className || "md-content",
+    dangerouslySetInnerHTML: { __html: html },
+  });
+}
+
+function StructuredResultCard({ visibleText, plotUrls }) {
+  return h(
+    "div",
+    { className: "showcase-grid" },
+    h(
+      "div",
+      { className: "plot-card" },
+      plotUrls.map((url) =>
+        h("img", { key: url, src: `${url}?t=${Date.now()}`, alt: "Generated plot" })
+      )
+    ),
+    h(
+      "div",
+      { className: "takeaway-card" },
+      h("div", { className: "card-title" }, "Key Takeaways"),
+      h(MarkdownContent, { text: visibleText, className: "takeaway-para md-content" })
+    )
+  );
+}
+
 function Message({ message }) {
   const isUser = message.role === "user";
+  const hasPlots = !message.showcase && message.plotUrls && message.plotUrls.length > 0;
   return h(
     "article",
-    { className: `message ${isUser ? "user-message" : "assistant-message"}` },
+    { className: `message ${isUser ? "user-message" : "assistant-message"}${message.showcase ? " showcase-article" : ""}` },
     h(
       "div",
       { className: "message-body" },
@@ -284,23 +576,18 @@ function Message({ message }) {
         "div",
         { className: `message-header ${isUser ? "user-message-header" : ""}` },
         h("span", { className: "message-avatar" }, h(ChatAvatarIcon, { type: isUser ? "user" : "assistant" })),
-        h("span", { className: "message-author" }, isUser ? "You" : "AIC Copilot"),
+        h("span", { className: "message-author" }, isUser ? "You" : "DI Copilot"),
         isUser && message.visibleText && h("span", { className: "user-inline-question" }, message.visibleText)
       ),
       !isUser && message.statusText && h("div", { className: "live-status" }, h("span", null), message.statusText),
-      !isUser &&
-        message.visibleText &&
-        h(
-          "div",
-          { className: "message-text" },
-          message.visibleText.split("\n").map((line, index) => h("p", { key: `${line}-${index}` }, line))
-        ),
+      !isUser && !hasPlots && message.visibleText &&
+        h(MarkdownContent, { text: message.visibleText, className: "message-text md-content" }),
       message.showcase
         ? h(ShowcasePlot, null)
-        : message.plotUrls?.map((url) =>
-            h("div", { className: "plot-card", key: url }, h("img", { src: `${url}?t=${Date.now()}`, alt: "Generated plot" }))
-          ),
-      message.closingText && h("div", { className: "closing-text" }, message.closingText)
+        : hasPlots
+          ? h(StructuredResultCard, { visibleText: message.visibleText, plotUrls: message.plotUrls })
+          : null,
+      !hasPlots && message.closingText && h("div", { className: "closing-text" }, message.closingText)
     )
   );
 }
@@ -325,21 +612,8 @@ function Takeaway({ tone, icon, children }) {
 function ShowcasePlot() {
   return h(
     "div",
-    { className: "showcase-grid" },
-    h(
-      "div",
-      { className: "plot-card showcase-plot" },
-      h("div", { className: "card-title" }, "Driver Contribution ", h("span", null, "Jan - Jun 2024 vs Jul - Dec 2023")),
-      h("img", { src: "/plots/showcase_contribution.png", alt: "Driver contribution waterfall" })
-    ),
-    h(
-      "div",
-      { className: "takeaway-card" },
-      h("div", { className: "card-title" }, "Key Takeaways"),
-      h(Takeaway, { tone: "negative", icon: "↓" }, "Data Center Demand decline was the largest contributor (-7.2%)."),
-      h(Takeaway, { tone: "positive", icon: "↑" }, "Pricing gains (+4.3% overall) helped offset part of the decline."),
-      h(Takeaway, { tone: "info", icon: "i" }, "Enterprise Demand showed improvement in the period.")
-    )
+    { className: "landing-image-wrap" },
+    h("img", { src: "/assets/landing.png", alt: "Decision Insights Copilot", className: "landing-image" })
   );
 }
 
@@ -354,15 +628,20 @@ function WorkingMessage() {
         "div",
         { className: "message-header" },
         h("span", { className: "message-avatar" }, h(ChatAvatarIcon, { type: "assistant" })),
-        h("span", { className: "message-author" }, "AIC Copilot")
+        h("span", { className: "message-author" }, "DI Copilot")
       ),
       h("div", { className: "working" }, h("span", null), h("strong", null, "Working on it..."))
     )
   );
 }
 
-function ChatInput({ disabled, onSend }) {
+function ChatInput({ disabled, onSend, actions }) {
   const [value, setValue] = useState("");
+  const [isRecording, setIsRecording] = useState(false);
+  const [isTranscribing, setIsTranscribing] = useState(false);
+  const [micError, setMicError] = useState("");
+  const mediaRecorderRef = useRef(null);
+  const chunksRef = useRef([]);
 
   function submit(event) {
     event.preventDefault();
@@ -372,34 +651,107 @@ function ChatInput({ disabled, onSend }) {
     onSend(prompt);
   }
 
+  async function toggleMic() {
+    if (isTranscribing) return;
+    setMicError("");
+
+    if (isRecording) {
+      mediaRecorderRef.current?.stop();
+      return;
+    }
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const recorder = new MediaRecorder(stream);
+      chunksRef.current = [];
+
+      recorder.ondataavailable = (e) => {
+        if (e.data.size > 0) chunksRef.current.push(e.data);
+      };
+
+      recorder.onstop = async () => {
+        stream.getTracks().forEach((t) => t.stop());
+        const blob = new Blob(chunksRef.current, { type: recorder.mimeType });
+        setIsRecording(false);
+        setIsTranscribing(true);
+        const reader = new FileReader();
+        reader.onloadend = async () => {
+          try {
+            const base64 = reader.result.split(",")[1];
+            const res = await fetch("/api/transcribe", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ audio: base64, mimeType: recorder.mimeType }),
+            });
+            const data = await res.json();
+            if (data.text) {
+              setValue((prev) => (prev ? `${prev} ${data.text}` : data.text));
+            } else {
+              setMicError("Transcription failed. Please try again.");
+            }
+          } catch (_) {
+            setMicError("Transcription failed. Please try again.");
+          } finally {
+            setIsTranscribing(false);
+          }
+        };
+        reader.readAsDataURL(blob);
+      };
+
+      mediaRecorderRef.current = recorder;
+      recorder.start();
+      setIsRecording(true);
+    } catch (err) {
+      if (err.name === "NotAllowedError" || err.name === "PermissionDeniedError") {
+        setMicError("Microphone access denied. Please allow microphone access in your browser settings.");
+      } else {
+        setMicError("Could not access microphone.");
+      }
+    }
+  }
+
+  const micClass = `mic-button${isRecording ? " recording" : ""}${isTranscribing ? " transcribing" : ""}`;
+
   return h(
-    "form",
-    { className: "chat-input-wrap", onSubmit: submit },
-    h("textarea", {
-      value,
-      disabled,
-      placeholder: "Ask anything about your financial data...",
-      rows: 1,
-      onChange: (event) => setValue(event.target.value),
-      onKeyDown: (event) => {
-        if (event.key === "Enter" && !event.shiftKey) {
-          event.preventDefault();
-          submit(event);
-        }
-      },
-    }),
+    "div",
+    { className: "chat-input-outer" },
+    micError && h("div", { className: "mic-error" }, micError),
     h(
-      "button",
-      { type: "button", className: "mic-button", disabled, "aria-label": "Voice input" },
+      "form",
+      { className: "chat-input-wrap", onSubmit: submit },
+      h("textarea", {
+        value,
+        disabled,
+        placeholder: "Ask anything about your financial data...",
+        rows: 1,
+        onChange: (event) => { setMicError(""); setValue(event.target.value); },
+        onKeyDown: (event) => {
+          if (event.key === "Enter" && !event.shiftKey) {
+            event.preventDefault();
+            submit(event);
+          }
+        },
+      }),
+      actions && h("div", { className: "input-actions" }, actions),
       h(
-        "svg",
-        { viewBox: "0 0 24 24", "aria-hidden": "true" },
-        h("path", { d: "M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3Z" }),
-        h("path", { d: "M19 10v2a7 7 0 0 1-14 0v-2" }),
-        h("path", { d: "M12 19v3" })
+        "div",
+        { className: "chat-input-right" },
+        h(
+          "button",
+          { type: "button", className: micClass, disabled: disabled || isTranscribing, "aria-label": isRecording ? "Stop recording" : "Voice input", onClick: toggleMic },
+          isTranscribing
+            ? h("span", { className: "mic-spinner" })
+            : h(
+                "svg",
+                { viewBox: "0 0 24 24", "aria-hidden": "true" },
+                h("path", { d: "M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3Z" }),
+                h("path", { d: "M19 10v2a7 7 0 0 1-14 0v-2" }),
+                h("path", { d: "M12 19v3" })
+              )
+        ),
+        h("button", { type: "submit", className: "send-button", disabled: disabled || !value.trim(), "aria-label": "Send message" }, "➤")
       )
-    ),
-    h("button", { type: "submit", className: "send-button", disabled: disabled || !value.trim(), "aria-label": "Send message" }, "➤")
+    )
   );
 }
 
@@ -438,7 +790,24 @@ function App() {
     } catch (_) {}
   }
 
+  async function deleteConversation(id) {
+    try {
+      await fetch(`/api/conversations/${id}`, { method: "DELETE" });
+      if (id === conversationId) {
+        setMessages([]);
+        setConversationId(null);
+      }
+      fetchConversations();
+    } catch (_) {}
+  }
+
   const renderedMessages = useMemo(() => (messages.length ? messages : [showcaseMessage]), [messages]);
+
+  const activeTitle = useMemo(() => {
+    const conv = conversations.find((c) => c.id === conversationId);
+    return conv?.title || "Conversation";
+  }, [conversations, conversationId]);
+  const hasConversationMessages = Boolean(conversationId && messages.length > 0);
 
   useEffect(() => {
     if (chatRef.current) {
@@ -460,7 +829,7 @@ function App() {
     };
     const history = messages.map((message) => ({
       role: message.role,
-      content: message.content || [message.visibleText, message.closingText].filter(Boolean).join("\n"),
+      content: message.visibleText || message.content || "",
     }));
 
     setMessages((current) => [...current, userMessage, assistantMessage]);
@@ -550,31 +919,58 @@ function App() {
 
       if (pendingFinal) {
         const finalVisibleText = pendingFinal.visibleText || pendingFinal.content || "";
-        const words = finalVisibleText.split(" ");
-        updateAssistant(() => ({
-          content: pendingFinal.content || "",
-          visibleText: "",
-          closingText: "",
-          plotUrls: [],
-          statusText: "",
-        }));
+        const finalPlotUrls = pendingFinal.plotUrls || [];
+        const isStructured = finalPlotUrls.length > 0;
 
-        for (let index = 0; index < words.length; index += 1) {
-          const suffix = index === words.length - 1 ? "" : " ";
-          const text = `${words[index]}${suffix}`;
-          updateAssistant((message) => ({
-            visibleText: `${message.visibleText || ""}${text}`,
+        if (isStructured) {
+          const words = finalVisibleText.split(" ");
+          updateAssistant(() => ({
+            content: pendingFinal.content || "",
+            visibleText: "",
+            closingText: "",
+            plotUrls: finalPlotUrls,
+            statusText: "",
           }));
-          await sleep(30);
-        }
+          for (let index = 0; index < words.length; index += 1) {
+            const suffix = index === words.length - 1 ? "" : " ";
+            updateAssistant((message) => ({
+              visibleText: `${message.visibleText || ""}${words[index]}${suffix}`,
+            }));
+            await sleep(30);
+          }
+          updateAssistant(() => ({
+            content: pendingFinal.content || "",
+            visibleText: finalVisibleText,
+            closingText: pendingFinal.closingText || "",
+            plotUrls: finalPlotUrls,
+            statusText: "",
+          }));
+        } else {
+          const words = finalVisibleText.split(" ");
+          updateAssistant(() => ({
+            content: pendingFinal.content || "",
+            visibleText: "",
+            closingText: "",
+            plotUrls: [],
+            statusText: "",
+          }));
 
-        updateAssistant(() => ({
-          content: pendingFinal.content || "",
-          visibleText: finalVisibleText,
-          closingText: pendingFinal.closingText || "",
-          plotUrls: pendingFinal.plotUrls || [],
-          statusText: "",
-        }));
+          for (let index = 0; index < words.length; index += 1) {
+            const suffix = index === words.length - 1 ? "" : " ";
+            updateAssistant((message) => ({
+              visibleText: `${message.visibleText || ""}${words[index]}${suffix}`,
+            }));
+            await sleep(30);
+          }
+
+          updateAssistant(() => ({
+            content: pendingFinal.content || "",
+            visibleText: finalVisibleText,
+            closingText: pendingFinal.closingText || "",
+            plotUrls: [],
+            statusText: "",
+          }));
+        }
       }
     } catch (error) {
       updateAssistant(() => ({
@@ -597,7 +993,7 @@ function App() {
   return h(
     "main",
     { className: "app-shell" },
-    h(Sidebar, { disabled: isWorking, onSuggestion: sendMessage, onNewConversation: startNewConversation, conversations, conversationId, onConversationClick: loadConversation }),
+    h(Sidebar, { disabled: isWorking, onSuggestion: sendMessage, onNewConversation: startNewConversation, conversations, conversationId, onConversationClick: loadConversation, onDeleteConversation: deleteConversation }),
     h(
       "section",
       { className: "workspace" },
@@ -607,7 +1003,11 @@ function App() {
         { className: "chat-panel", ref: chatRef },
         renderedMessages.map((message, index) => h(Message, { key: message.id || `${message.role}-${index}`, message }))
       ),
-      h(ChatInput, { disabled: isWorking, onSend: sendMessage })
+      h(ChatInput, {
+        disabled: isWorking,
+        onSend: sendMessage,
+        actions: conversationId && h(ConversationActions, { conversationId, conversationTitle: activeTitle, disabled: !hasConversationMessages }),
+      })
     )
   );
 }
