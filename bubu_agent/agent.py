@@ -816,13 +816,36 @@ def _plot_bar(df, x_col: str, y_cols: List[str], title: str, x_label: str, y_lab
     import plotly.graph_objects as go
     fig = go.Figure()
     for i, col in enumerate(y_cols):
+        vals = df[col]
+        all_positive = vals.min() >= 0
+        text_vals = [
+            f"{v:,.1f}" if abs(v) < 1000 else f"{v:,.0f}"
+            for v in vals
+        ]
         fig.add_trace(go.Bar(
-            x=df[x_col], y=df[col],
+            x=df[x_col],
+            y=vals,
             name=col.replace("_", " ").title(),
-            marker_color=_ABB_COLORS[i % len(_ABB_COLORS)],
-            marker_line=dict(width=0),
+            marker=dict(
+                color=_ABB_COLORS[i % len(_ABB_COLORS)],
+                opacity=0.9,
+                line=dict(width=0),
+            ),
+            text=text_vals,
+            textposition="outside" if all_positive else "auto",
+            textfont=dict(size=12, color="#111827", family="Arial"),
+            cliponaxis=False,
         ))
-    fig.update_layout(barmode="group")
+    max_val = df[y_cols].max().max()
+    min_val = df[y_cols].min().min()
+    y_top = max_val * 1.20 if max_val > 0 else max_val * 0.8
+    y_bot = min_val * 1.15 if min_val < 0 else 0
+    fig.update_layout(
+        barmode="group",
+        bargap=0.28,
+        bargroupgap=0.06,
+        yaxis=dict(range=[y_bot, y_top]),
+    )
     _abb_layout(fig, title, x_label, y_label)
     return fig
 
@@ -833,17 +856,24 @@ def _plot_waterfall(df, x_col: str, value_col: str, title: str, x_label: str, y_
     if n < 3:
         return _plot_bar(df, x_col, [value_col], title, x_label, y_label)
     measure = ["absolute"] + ["relative"] * (n - 2) + ["total"]
+    vals = df[value_col].tolist()
+    text_vals = [
+        (f"+{v:,.1f}" if v >= 0 else f"{v:,.1f}") if m == "relative" else f"{v:,.1f}"
+        for v, m in zip(vals, measure)
+    ]
     fig = go.Figure(go.Waterfall(
         orientation="v",
         measure=measure,
         x=df[x_col].tolist(),
-        y=df[value_col].tolist(),
-        connector=dict(line=dict(color="#D1D5DB", width=1, dash="dot")),
-        increasing=dict(marker=dict(color="#FF000F")),
-        decreasing=dict(marker=dict(color="#48556A")),
-        totals=dict(marker=dict(color="#19202C")),
+        y=vals,
+        text=text_vals,
         textposition="outside",
-        textfont=dict(size=9),
+        textfont=dict(size=12, color="#111827", family="Arial"),
+        connector=dict(line=dict(color="#CBD5E1", width=1.5, dash="dot")),
+        increasing=dict(marker=dict(color="#10B981", line=dict(width=0))),
+        decreasing=dict(marker=dict(color="#EF4444", line=dict(width=0))),
+        totals=dict(marker=dict(color="#1d2939", line=dict(width=0))),
+        cliponaxis=False,
     ))
     _abb_layout(fig, title, x_label, y_label)
     return fig
