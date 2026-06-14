@@ -1,4 +1,5 @@
 import base64
+import time
 from pathlib import Path
 
 import streamlit as st
@@ -6,62 +7,142 @@ import streamlit as st
 from agent import agent, set_trace_callback
 
 
-st.set_page_config(page_title="ABB Executive Assistant", page_icon="A", layout="wide")
+st.set_page_config(
+    page_title="ABB Driver Analysis Copilot",
+    page_icon="assets/abb-logo.svg",
+    layout="wide",
+    initial_sidebar_state="collapsed",
+)
 
 
 APP_DIR = Path(__file__).parent
+PLOTS_DIR = APP_DIR / "plots"
 ABB_LOGO_PATH = APP_DIR / "assets" / "abb-logo.svg"
 ABB_LOGO_DATA_URL = (
     "data:image/svg+xml;base64,"
     + base64.b64encode(ABB_LOGO_PATH.read_bytes()).decode("utf-8")
 )
 
+
+def _html(markup: str) -> str:
+    """Collapse indentation/blank lines so Streamlit doesn't render HTML as a code block."""
+    return "".join(line.strip() for line in markup.splitlines() if line.strip())
+
+
+# Fallback height; CSS overrides this to fill the true remaining viewport height.
+CHAT_HEIGHT = 600
+
+
+# ---------------------------------------------------------------------------
+# Session state
+# ---------------------------------------------------------------------------
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
 if "pending_prompt" not in st.session_state:
     st.session_state.pending_prompt = None
 
-if "agent_steps" not in st.session_state:
-    st.session_state.agent_steps = []
+if "streaming_response" not in st.session_state:
+    st.session_state.streaming_response = None
 
 is_processing = st.session_state.pending_prompt is not None
-message_count = max(1, len(st.session_state.messages) + (1 if is_processing else 0))
-chat_height = min(800, 390 + message_count * 50)
-panel_height = chat_height + 104
 
 
-def render_processing_indicator():
-    st.markdown(
-        """
-        <div class="abb-thinking">
-            <span class="abb-thinking-ring"></span>
-            <strong>Working on it</strong>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-
-def render_agent_steps():
-    if not st.session_state.agent_steps:
-        st.markdown(
-            """<p class="abb-panel-empty">No steps yet.</p>""",
-            unsafe_allow_html=True,
-        )
+def submit_prompt(prompt: str):
+    """Queue a user prompt for the agent (shared by chat input and chips)."""
+    if not prompt or is_processing:
         return
-
-    lines = []
-    for index, step in enumerate(st.session_state.agent_steps[-12:], start=1):
-        detail = step.get("detail", "")
-        if detail:
-            lines.append(f"{index}. **{step['title']}**: {detail}")
-        else:
-            lines.append(f"{index}. **{step['title']}**")
-    st.markdown("\n".join(lines))
+    st.session_state.messages.append({"role": "user", "content": prompt})
+    st.session_state.pending_prompt = prompt
 
 
-def render_message_content(content):
+# ---------------------------------------------------------------------------
+# Dummy dashboard data (placeholder until wired to real metrics)
+# ---------------------------------------------------------------------------
+SPARK_TREND = (
+    "4,22 14,18 24,24 34,16 44,20 54,12 64,18 74,26 84,22 94,30 104,28 116,34"
+)
+
+SUGGESTED_QUESTIONS = [
+    ("📉", "Why did ELSP orders decline in the last 6 months?"),
+    ("⚖️", "Which drivers are selected for ELSP?"),
+    ("🔀", "Compare ELSP and ELSB performance"),
+    ("📈", "Give me the bear, base, and bull forecast for ELSP"),
+    ("🧪", "Simulate ELSP if Data Center growth is 30"),
+]
+
+RECENT_CONVERSATIONS = [
+    ("Why did ELSP orders decline?", "10:24 AM"),
+    ("Compare ELSP and ELSB", "Yesterday"),
+    ("Top drivers in NWC this month", "Yesterday"),
+    ("Price elasticity for DC products", "May 29"),
+    ("Impact of FX on FCF", "May 28"),
+]
+
+
+@st.cache_data(show_spinner=False)
+def get_showcase_plot() -> str:
+    """Render the dummy 'Driver Contribution' chart once and cache the path."""
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    PLOTS_DIR.mkdir(exist_ok=True)
+    path = PLOTS_DIR / "showcase_contribution.png"
+
+    labels = [
+        "Data Center\nDemand",
+        "Pricing /\nRealization",
+        "FX Impact",
+        "Inventory\nAdjustment",
+        "Enterprise\nDemand",
+        "Total\nChange",
+    ]
+    values = [-7.2, -5.6, -3.1, -2.4, 2.3, -18.7]
+
+    abb_red = "#ff000f"
+    pos_green = "#15803d"
+    neutral = "#9aa3b2"
+
+    starts = []
+    running = 0.0
+    for v in values[:-1]:
+        starts.append(running)
+        running += v
+    starts.append(0.0)
+
+    colors = [abb_red if v < 0 else pos_green for v in values[:-1]] + [neutral]
+
+    fig, ax = plt.subplots(figsize=(7.2, 3.05), dpi=150)
+    for i, (val, start, color) in enumerate(zip(values, starts, colors)):
+        ax.bar(i, val, bottom=start, color=color, width=0.62, zorder=3)
+        ytext = start + val + (0.7 if val >= 0 else -1.3)
+        ax.text(
+            i, ytext, f"{val:+.1f}%",
+            ha="center", va="bottom" if val >= 0 else "top",
+            fontsize=8.5, color="#1a1d26", fontweight="bold",
+        )
+
+    ax.axhline(0, color="#cfd4de", linewidth=1, zorder=2)
+    ax.set_xticks(range(len(labels)))
+    ax.set_xticklabels(labels, fontsize=8, color="#475063")
+    ax.set_ylabel("Impact (%)", fontsize=9, color="#475063")
+    ax.tick_params(axis="y", labelsize=8, colors="#475063")
+    ax.grid(axis="y", color="#eef0f4", linewidth=1, zorder=0)
+    for spine in ["top", "right", "left"]:
+        ax.spines[spine].set_visible(False)
+    ax.spines["bottom"].set_color("#cfd4de")
+    fig.tight_layout()
+    fig.savefig(path, dpi=150, bbox_inches="tight", facecolor="white")
+    plt.close(fig)
+    return str(path)
+
+
+# ---------------------------------------------------------------------------
+# Message rendering (keeps the agent's plot magic-prefix contract)
+# ---------------------------------------------------------------------------
+def parse_message_content(content):
     lines = content.splitlines()
     visible_lines = []
     closing_lines = []
@@ -105,583 +186,538 @@ def render_message_content(content):
 
         visible_lines.append(line)
 
-    visible_text = "\n".join(visible_lines).strip()
+    return "\n".join(visible_lines).strip(), plot_paths, "\n".join(closing_lines).strip()
+
+
+def stream_text(text: str):
+    words = text.split(" ")
+    for index, word in enumerate(words):
+        suffix = " " if index < len(words) - 1 else ""
+        yield word + suffix
+        time.sleep(0.012)
+
+
+def render_message_content(content):
+    visible_text, plot_paths, closing_text = parse_message_content(content)
     if visible_text:
         st.markdown(visible_text)
 
     for plot_path in plot_paths:
-        st.image(plot_path, width="stretch")
+        st.image(plot_path, use_container_width=True)
 
-    if closing_lines:
-        st.markdown("\n".join(closing_lines))
+    if closing_text:
+        st.markdown(closing_text)
 
 
+def render_streaming_response(content):
+    visible_text, plot_paths, closing_text = parse_message_content(content)
+    if visible_text:
+        st.write_stream(stream_text(visible_text))
+
+    for plot_path in plot_paths:
+        st.image(plot_path, use_container_width=True)
+
+    if closing_text:
+        st.write_stream(stream_text(closing_text))
+
+
+# ---------------------------------------------------------------------------
+# Styles
+# ---------------------------------------------------------------------------
 st.markdown(
     """
     <style>
         :root {
             --abb-red: #ff000f;
-            --ink: #101828;
-            --muted: #667085;
-            --line: #d9dde7;
+            --abb-red-dark: #c8000c;
+            --abb-red-soft: #fff3f4;
+            --abb-red-tint: #ffe3e5;
+            --ink: #1a1d26;
+            --muted: #6b7280;
+            --faint: #9aa3b2;
+            --line: #e8eaf0;
+            --surface: #f6f7f9;
             --panel: #ffffff;
-            --surface: #f5f6f8;
-            --panel-height: __PANEL_HEIGHT__px;
+            --pos: #15803d;
         }
 
-        .stApp {
+        html, body, .stApp {
+            height: 100%;
+            overflow: hidden;
             background: var(--surface);
             color: var(--ink);
         }
-
         .block-container {
-            width: min(96vw, 1680px);
-            max-width: 1680px;
-            padding: 1.1rem 1.5rem 5.5rem;
+            height: calc(100vh - 0.6rem);
+            padding: 0.45rem 1.35rem 0.35rem;
+            max-width: 1800px;
+            overflow: hidden;
         }
+        /* reclaim the empty band the default header reserves at the top */
+        header[data-testid="stHeader"] { display: none; height: 0; }
+        [data-testid="stToolbar"] { display: none; }
+        #MainMenu, footer { visibility: hidden; }
+        /* keep the whole page fixed; only the chat container scrolls */
+        [data-testid="stMain"], [data-testid="stAppViewContainer"] { overflow: hidden; }
+        /* hide the (now unused) collapsible sidebar + its toggle */
+        section[data-testid="stSidebar"] { display: none; }
+        div[data-testid="stSidebarCollapsedControl"] { display: none; }
 
-        header[data-testid="stHeader"] {
-            background: transparent;
+        /* ---------- Left panel (two stacked boxes) ---------- */
+        .abb-card-box {
+            background: var(--panel); border: 1px solid var(--line); border-radius: 14px;
+            box-shadow: 0 4px 12px rgba(16,24,40,0.04);
         }
-
-        .abb-topbar {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            gap: 1rem;
-            padding: 0.9rem 1rem;
-            margin-bottom: 0.9rem;
-            background: #ffffff;
-            border: 1px solid var(--line);
-            border-top: 4px solid var(--abb-red);
-            border-radius: 8px;
-            box-shadow: 0 8px 24px rgba(16, 24, 40, 0.06);
-        }
-
-        .abb-brand {
-            display: flex;
-            align-items: center;
-            gap: 0.9rem;
-        }
-
-        .abb-brand img {
-            width: 96px;
-            height: auto;
-            display: block;
-        }
-
-        .abb-brand-text {
-            display: flex;
-            flex-direction: column;
-            gap: 0.1rem;
-        }
-
-        .abb-brand-text strong {
-            font-size: 1rem;
-            line-height: 1.2;
-        }
-
-        .abb-brand-text span,
-        .abb-env span,
-        .abb-eyebrow,
-        .abb-card span,
-        .abb-chat-label,
-        .abb-footnote {
-            color: var(--muted);
-        }
-
-        .abb-brand-text span,
-        .abb-env span {
-            font-size: 0.82rem;
-        }
-
-        .abb-env {
-            display: flex;
-            align-items: center;
-            gap: 0.55rem;
-            white-space: nowrap;
-        }
-
-        .abb-dot {
-            width: 9px;
-            height: 9px;
-            border-radius: 50%;
-            background: var(--abb-red);
-            box-shadow: 0 0 0 5px rgba(255, 0, 15, 0.10);
-        }
-
-        .abb-intro,
-        .abb-side-panel {
-            background: var(--panel);
-            border: 1px solid var(--line);
-            border-radius: 8px;
-            box-shadow: 0 10px 28px rgba(16, 24, 40, 0.06);
-            padding: 1.15rem;
-            position: sticky;
-            top: 1rem;
-            min-height: var(--panel-height);
-            display: flex;
-            flex-direction: column;
-        }
-
-        .abb-side-panel {
-            gap: 1rem;
-        }
-
-        .abb-eyebrow {
-            margin: 0 0 0.55rem;
-            font-size: 0.78rem;
+        .abb-left-brand { padding: 0.85rem 1rem; margin-bottom: 0.55rem; }
+        .abb-left-recent { padding: 0.8rem 1rem 0.55rem; margin: 0.55rem 0; }
+        .abb-left-profile { padding: 0.7rem 0.9rem; }
+        .abb-sq-label { margin-top: 0.1rem !important; }
+        .abb-side-brand { display: flex; align-items: center; gap: 0.9rem; }
+        .abb-side-brand img { width: 88px; height: auto; }
+        .abb-side-brand .abb-side-title {
+            font-size: 1.34rem; color: var(--ink); line-height: 1.04;
             font-weight: 700;
-            letter-spacing: 0;
-            text-transform: uppercase;
+        }
+        .abb-side-brand .abb-side-title strong { font-weight: 800; }
+        .abb-side-label {
+            font-size: 0.72rem; font-weight: 700; text-transform: uppercase;
+            letter-spacing: 0.04em; color: var(--faint); margin: 0.2rem 0 0.6rem;
+        }
+        .abb-convo {
+            padding: 0.5rem 0.55rem; border-radius: 8px; border: 1px solid transparent;
+            display: flex; justify-content: space-between; gap: 0.5rem; margin-bottom: 0.15rem;
+        }
+        .abb-convo:hover { background: var(--abb-red-soft); border-color: var(--abb-red-tint); }
+        .abb-convo .abb-convo-title {
+            font-size: 0.83rem; color: var(--ink);
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        }
+        .abb-convo .abb-convo-time { font-size: 0.72rem; color: var(--faint); white-space: nowrap; }
+        .abb-side-link { color: var(--abb-red); font-size: 0.8rem; font-weight: 600; margin-top: 0.5rem; }
+        .abb-profile { display: flex; align-items: center; gap: 0.65rem; }
+        .abb-avatar {
+            width: 36px; height: 36px; border-radius: 50%; background: var(--abb-red); color: #fff;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 0.82rem; font-weight: 700; flex: 0 0 auto;
+        }
+        .abb-profile .abb-profile-name { font-size: 0.85rem; font-weight: 600; line-height: 1.15; }
+        .abb-profile .abb-profile-role { font-size: 0.74rem; color: var(--muted); }
+
+        [data-testid="stVerticalBlock"]:has(.abb-left-brand) {
+            min-height: calc(100vh - 1rem);
+            display: flex;
+            flex-direction: column;
+        }
+        [data-testid="stVerticalBlock"]:has(.abb-left-brand) .abb-left-profile { margin-top: auto; }
+
+        /* ---------- KPI cards ---------- */
+        .abb-kpi-row {
+            display: grid; grid-template-columns: 1.25fr 1.25fr 1fr 1fr 1fr;
+            gap: 0.8rem; margin-bottom: 0.7rem;
+        }
+        .abb-kpi {
+            background: var(--panel); border: 1px solid var(--line); border-radius: 11px;
+            padding: 0.8rem 0.85rem; box-shadow: 0 6px 18px rgba(16,24,40,0.055);
+            display: flex; flex-direction: column; gap: 0.16rem; min-height: 126px;
+        }
+        .abb-kpi-head { display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.1rem; }
+        .abb-kpi-icon {
+            width: 26px; height: 26px; border-radius: 8px; background: var(--abb-red-soft);
+            color: var(--abb-red); display: flex; align-items: center; justify-content: center;
+            font-size: 0.82rem; flex: 0 0 auto;
+        }
+        .abb-kpi-title { font-size: 0.8rem; font-weight: 750; line-height: 1.05; }
+        .abb-kpi-sub { font-size: 0.68rem; color: var(--faint); }
+        .abb-kpi-strong { font-weight: 750; color: var(--ink); font-size: 0.84rem; }
+        .abb-kpi-metric { font-size: 1.65rem; font-weight: 800; letter-spacing: 0; line-height: 1.12; }
+        .abb-kpi-metric.sm { font-size: 1.45rem; }
+        .abb-kpi-metric.neg { color: var(--abb-red); }
+        .abb-kpi-metric.pos { color: var(--pos); }
+        .abb-kpi-foot { font-size: 0.68rem; color: var(--muted); }
+        .abb-pill {
+            display: inline-block; margin-top: auto; padding: 0.22rem 0.5rem; border-radius: 8px;
+            font-size: 0.66rem; font-weight: 650; background: var(--abb-red-soft); color: var(--abb-red-dark);
+        }
+        .abb-kpi-link { font-size: 0.7rem; font-weight: 600; color: var(--abb-red); margin-top: auto; }
+
+        /* ---------- Section label ---------- */
+        .abb-section-label {
+            font-size: 0.78rem; font-weight: 700; text-transform: uppercase;
+            letter-spacing: 0.04em; color: var(--muted); margin: 0.2rem 0 0.55rem;
         }
 
-        .abb-intro h1 {
-            margin: 0;
-            max-width: 20rem;
-            font-size: 1.38rem;
-            line-height: 1.12;
-            letter-spacing: 0;
+        /* ---------- Suggested question chips (targeted by key) ---------- */
+        div[class*="st-key-chip_"] { margin-bottom: 0.4rem; }
+        div[class*="st-key-chip_"] button {
+            width: 100%; text-align: left; white-space: normal; height: auto;
+            background: var(--panel); color: var(--ink); border: 1px solid var(--line);
+            border-radius: 10px; padding: 0.5rem 0.65rem; font-weight: 500;
+            line-height: 1.25; min-height: 0; box-shadow: 0 2px 6px rgba(16,24,40,0.03);
         }
-
-        .abb-intro p {
-            margin: 0.65rem 0 0;
-            max-width: 21rem;
-            color: var(--muted);
-            font-size: 0.88rem;
-            line-height: 1.48;
+        div[class*="st-key-chip_"] button:hover {
+            border-color: var(--abb-red); color: var(--abb-red-dark); background: var(--abb-red-soft);
         }
+        div[class*="st-key-chip_"] button p { font-size: 0.78rem; }
 
-        .abb-card-grid {
-            display: grid;
-            grid-template-columns: 1fr;
-            gap: 0.5rem;
-            margin-top: 0.9rem;
+        /* ---------- Conversation ---------- */
+        .abb-copilot-head { display: flex; align-items: center; gap: 0.6rem; margin: 0.25rem 0 0.45rem; }
+        .abb-copilot-badge {
+            width: 30px; height: 30px; border-radius: 8px;
+            background: linear-gradient(135deg, var(--abb-red), var(--abb-red-dark));
+            color: #fff; display: flex; align-items: center; justify-content: center; font-size: 0.9rem;
+        }
+        .abb-copilot-name { font-weight: 700; font-size: 0.95rem; }
+
+        [data-testid="stChatMessage"] {
+            border: 1px solid var(--line); border-radius: 12px; background: var(--panel);
+            box-shadow: 0 4px 14px rgba(16,24,40,0.03); margin-bottom: 0.7rem;
+        }
+        [data-testid="stChatMessage"]:has([data-testid="chatAvatarIcon-assistant"]) { background: #fcfcfd; }
+        [data-testid="stChatMessage"]:has([data-testid="chatAvatarIcon-user"]) {
+            background: #f8fbff;
+            border-color: #dce8ff;
+        }
+        [data-testid="stChatMessage"]:has([data-testid="chatAvatarIcon-user"]) [data-testid="stMarkdownContainer"] p {
+            font-weight: 600;
+            color: #172554;
+        }
+        [data-testid="stChatMessage"] img {
+            width: 100% !important;
+            max-height: 420px;
+            object-fit: contain;
+            border: 1px solid var(--line);
+            border-radius: 10px;
+            background: #fff;
+            padding: 0.35rem;
         }
 
         .abb-card {
-            padding: 0.68rem 0.72rem;
-            border: 1px solid var(--line);
-            border-radius: 8px;
-            background: #fbfcfd;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            gap: 0.75rem;
+            background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
+            padding: 1rem 1.1rem; box-shadow: 0 6px 18px rgba(16,24,40,0.04);
         }
-
-        .abb-card strong {
-            display: block;
-            margin: 0;
-            font-size: 0.95rem;
+        .abb-card h4 { margin: 0 0 0.7rem; font-size: 0.92rem; font-weight: 700; }
+        .abb-card .abb-card-sub { font-size: 0.74rem; color: var(--faint); font-weight: 500; }
+        .abb-takeaway { display: flex; gap: 0.55rem; margin-bottom: 0.8rem; }
+        .abb-takeaway .abb-tk-icon {
+            width: 22px; height: 22px; border-radius: 6px; flex: 0 0 auto; background: var(--abb-red-soft);
+            color: var(--abb-red); display: flex; align-items: center; justify-content: center; font-size: 0.72rem;
         }
+        .abb-takeaway p { margin: 0; font-size: 0.82rem; color: var(--ink); line-height: 1.4; }
 
-        .abb-card span {
-            display: block;
-            font-size: 0.82rem;
-            line-height: 1.35;
-            text-align: right;
-        }
-
-        .abb-brief,
-        .abb-side-section {
-            margin-top: 0;
-            padding-top: 0;
-        }
-
-        .abb-side-section + .abb-side-section,
-        .abb-brief {
-            margin-top: 0.95rem;
-            padding-top: 0.95rem;
-            border-top: 1px solid var(--line);
-        }
-
-        .abb-brief h3,
-        .abb-side-section h3 {
-            margin: 0 0 0.45rem;
-            font-size: 0.92rem;
-            letter-spacing: 0;
-        }
-
-        .abb-brief ul,
-        .abb-side-section ul {
-            margin: 0;
-            padding-left: 1rem;
-            color: var(--muted);
-            font-size: 0.8rem;
-            line-height: 1.4;
-        }
-
-        .abb-brief li + li,
-        .abb-side-section li + li {
-            margin-top: 0.32rem;
-        }
-
-        .abb-panel {
-            margin-top: 0;
-            padding-top: 0;
-        }
-
-        .abb-panel h3 {
-            margin: 0 0 0.45rem;
-            font-size: 0.92rem;
-            letter-spacing: 0;
-        }
-
-        .abb-panel-empty {
-            color: var(--muted);
-            font-size: 0.8rem;
-            line-height: 1.4;
-            margin: 0.45rem 0 0;
-        }
-
-        .abb-chat-header {
-            display: flex;
-            justify-content: space-between;
-            gap: 1rem;
-            align-items: flex-start;
-            padding: 0 0 0.5rem;
-            border-bottom: 1px solid var(--line);
-            margin-bottom: 0.5rem;
-        }
-
-        .abb-chat-actions {
-            display: flex;
-            flex-direction: column;
-            gap: 0.45rem;
-            align-items: flex-end;
-        }
-
-        .abb-chat-label {
-            margin: 0;
-            font-size: 0.78rem;
-            font-weight: 700;
-            text-transform: uppercase;
-            letter-spacing: 0;
-        }
-
-        .abb-chat-header h2 {
-            margin: 0.25rem 0 0;
-            font-size: 1.25rem;
-            letter-spacing: 0;
-        }
-
-        .abb-mode {
-            border: 1px solid #ffd0d3;
-            background: #fff6f6;
-            color: #b0000a;
-            border-radius: 999px;
-            padding: 0.35rem 0.65rem;
-            font-size: 0.78rem;
-            font-weight: 700;
-            white-space: nowrap;
-        }
-
-        .abb-samples {
-            margin-top: 0;
-            padding: 0;
-            background: transparent;
-            border: 0;
-            border-radius: 0;
-            box-shadow: none;
-        }
-
-        .abb-samples h3 {
-            margin: 0 0 0.45rem;
-            font-size: 0.92rem;
-            letter-spacing: 0;
-        }
-
-        .abb-sample-list {
-            margin: 0;
-            padding-left: 1rem;
-            color: var(--muted);
-            font-size: 0.8rem;
-            line-height: 1.43;
-        }
-
-        .abb-sample-list li + li {
-            margin-top: 0.42rem;
-        }
-
-        .abb-footnote {
-            margin: auto 0 0;
-            font-size: 0.78rem;
-            line-height: 1.4;
-        }
-
-        .abb-divider {
-            height: 3px;
-            width: 56px;
-            margin-top: 0.9rem;
-            background: var(--abb-red);
-            border-radius: 999px;
-        }
-
-        .abb-microcopy {
-            margin: 0.3rem 0 0;
-            color: var(--muted);
-            font-size: 0.78rem;
-        }
-
-        .abb-chat-footer {
-            margin: 0.65rem 0 0;
-            color: var(--muted);
-            font-size: 0.76rem;
-            text-align: right;
-        }
-
-        div[data-testid="stVerticalBlockBorderWrapper"] {
-            background: #ffffff;
-            border-color: var(--line);
-            border-radius: 8px;
-            box-shadow: 0 10px 28px rgba(16, 24, 40, 0.06);
-            min-height: var(--panel-height);
-        }
-
-        div[data-testid="stVerticalBlockBorderWrapper"] > div {
-            padding: 1rem;
-        }
-
-        div[data-testid="stVerticalBlockBorderWrapper"] div[data-testid="stVerticalBlockBorderWrapper"] {
-            box-shadow: none;
-            background: #fafbfc;
-            border-color: #edf0f5;
-            min-height: auto;
-        }
-
-        [data-testid="stChatMessage"] {
-            border: 1px solid #e6e9f0;
-            border-radius: 8px;
-            background: #ffffff;
-            box-shadow: none;
-            margin-bottom: 0.55rem;
-        }
-
-        [data-testid="stChatMessage"]:has([data-testid="chatAvatarIcon-assistant"]) {
-            background: #fafbfc;
-        }
-
-        .abb-thinking {
-            display: flex;
-            align-items: center;
-            gap: 0.7rem;
-            min-height: 42px;
-            color: var(--ink);
-        }
-
+        .abb-thinking { display: flex; align-items: center; gap: 0.7rem; min-height: 38px; }
         .abb-thinking-ring {
-            width: 24px;
-            height: 24px;
-            border-radius: 50%;
-            border: 3px solid #ffd0d3;
-            border-top-color: var(--abb-red);
-            animation: abb-spin 0.85s linear infinite;
-            flex: 0 0 auto;
+            width: 22px; height: 22px; border-radius: 50%; border: 3px solid var(--abb-red-tint);
+            border-top-color: var(--abb-red); animation: abb-spin 0.85s linear infinite; flex: 0 0 auto;
+        }
+        @keyframes abb-spin { to { transform: rotate(360deg); } }
+
+        /* ---------- Suggested questions box ---------- */
+        [class*="st-key-sq_box"] {
+            background: var(--panel) !important;
+            border: 1px solid var(--line) !important;
+            border-radius: 14px !important;
+            padding: 0.55rem 0.55rem 0.35rem !important;
+            box-shadow: 0 4px 12px rgba(16,24,40,0.04) !important;
+            margin-bottom: 0.7rem !important;
+        }
+        [class*="st-key-sq_box"] div[class*="st-key-chip_"] { margin-bottom: 0.28rem !important; }
+
+        /* ---------- Conversation fills leftover viewport ---------- */
+        /* Streamlit renders st.container(height=...) as stVerticalBlockBorderWrapper with inline height.
+           Borderless containers use a different wrapper, so target both paths. */
+        [class*="st-key-abb_chatbox"] {
+            height: calc(100vh - 305px) !important;
+            max-height: none !important;
+            overflow-y: auto !important;
+            background: var(--panel);
+            border: 1px solid var(--line);
+            border-radius: 14px;
+            padding: 0.75rem 0.85rem 1rem !important;
+            box-shadow: 0 4px 14px rgba(16,24,40,0.03);
+        }
+        [class*="st-key-abb_chatbox"] [data-testid="stVerticalBlockBorderWrapper"] {
+            height: calc(100vh - 305px) !important;
+            max-height: none !important;
+            overflow-y: auto !important;
+        }
+        [class*="st-key-abb_chatbox"] [data-testid="stVerticalBlock"] {
+            min-height: 100% !important;
+        }
+        [class*="st-key-abb_chatbox"] [data-testid="stChatMessage"] {
+            box-shadow: none;
+            border-color: #edf0f5;
         }
 
-        .abb-thinking strong {
-            display: block;
+        /* ---------- Bottom-docked input aligned to the main column ---------- */
+        [data-testid="stBottom"] { background: var(--surface); }
+        [data-testid="stBottom"] > div,
+        [data-testid="stBottomBlockContainer"] {
+            max-width: 1800px !important;
+            margin: 0 auto !important;
+            padding-left: calc(20% + 2.15rem) !important;
+            padding-right: 1.35rem !important;
+            padding-bottom: 0.55rem !important;
         }
 
-        .abb-thinking strong {
-            font-size: 0.9rem;
-            line-height: 1.2;
-        }
-
-        @keyframes abb-spin {
-            to {
-                transform: rotate(360deg);
-            }
-        }
-
+        /* ---------- Input: rectangular, white, mic icon inside ---------- */
         [data-testid="stChatInput"] {
-            max-width: min(96vw, 1680px);
+            position: relative; background: #ffffff;
+            border: 1px solid var(--line); border-radius: 12px;
+            box-shadow: 0 6px 18px rgba(16,24,40,0.06);
+            max-width: 100%;
             margin: 0 auto;
         }
-
+        [data-testid="stChatInput"] > div { background: #ffffff; border-radius: 12px; }
         [data-testid="stChatInput"] textarea {
-            border-radius: 8px;
-            border-color: var(--line);
-            min-height: 48px;
+            background: #ffffff; border-radius: 12px;
+            min-height: 56px; font-size: 0.92rem; padding-right: 92px;
+            color: var(--ink);
         }
-
-        @media (max-width: 900px) {
-            .block-container {
-                padding-left: 1rem;
-                padding-right: 1rem;
-            }
-
-            .abb-card-grid {
-                grid-template-columns: 1fr;
-            }
-
-            .abb-topbar,
-            .abb-chat-header {
-                flex-direction: column;
-                align-items: flex-start;
-            }
-
-            .abb-chat-actions {
-                align-items: flex-start;
-            }
-
-            .abb-intro {
-                position: static;
-                min-height: auto;
-            }
-
-            .abb-side-panel {
-                position: static;
-                min-height: auto;
-            }
-
+        [data-testid="stChatInput"] textarea::placeholder { color: #5f6673; opacity: 1; }
+        /* dummy mic icon sitting just left of the send button */
+        [data-testid="stChatInput"]::after {
+            content: ""; position: absolute; right: 56px; top: 50%; transform: translateY(-50%);
+            width: 20px; height: 20px; pointer-events: none; opacity: 0.6;
+            background: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><rect x='9' y='2' width='6' height='11' rx='3'/><path d='M5 10a7 7 0 0 0 14 0'/><line x1='12' y1='19' x2='12' y2='22'/></svg>") no-repeat center;
+            background-size: contain;
         }
+        /* send button -> ABB red */
+        [data-testid="stChatInputSubmitButton"] svg { fill: var(--abb-red); color: var(--abb-red); }
+
+        @media (max-width: 1100px) { .abb-kpi-row { grid-template-columns: 1fr 1fr; } }
     </style>
-    """.replace("__PANEL_HEIGHT__", str(panel_height)),
-    unsafe_allow_html=True,
-)
-
-st.markdown(
-    f"""
-    <div class="abb-topbar">
-        <div class="abb-brand">
-            <img src="{ABB_LOGO_DATA_URL}" alt="ABB logo" />
-            <div class="abb-brand-text">
-                <strong>ABB Executive Assistant</strong>
-                <span>Leadership briefing and support interface</span>
-            </div>
-        </div>
-        <div class="abb-env">
-            <span class="abb-dot"></span>
-            <span>Prototype online</span>
-        </div>
-    </div>
     """,
     unsafe_allow_html=True,
 )
 
-left, center, right = st.columns([0.82, 1.9, 0.82], gap="medium")
 
-with left:
+# ---------------------------------------------------------------------------
+# Page layout: fixed left panel + main area
+# ---------------------------------------------------------------------------
+left_col, main_col = st.columns([0.2, 0.8], gap="medium")
+
+
+# ---------------------------------------------------------------------------
+# Left panel  (ABB logo + Recent Conversations + profile)
+# ---------------------------------------------------------------------------
+convo_html = "".join(
+    f'<div class="abb-convo"><span class="abb-convo-title">{title}</span>'
+    f'<span class="abb-convo-time">{time}</span></div>'
+    for title, time in RECENT_CONVERSATIONS
+)
+with left_col:
     st.markdown(
-        """
-        <section class="abb-intro">
-            <p class="abb-eyebrow">ABB Assistant</p>
-            <h1>Executive conversation prototype.</h1>
-            <p>
-                A focused leadership interface for validating the assistant experience.
-            </p>
-            <div class="abb-card-grid">
-                <div class="abb-card">
-                    <strong>Status</strong>
-                    <span>Online</span>
-                </div>
-                <div class="abb-card">
-                    <strong>Mode</strong>
-                    <span>Agent</span>
+        _html(
+            f"""
+            <div class="abb-card-box abb-left-brand">
+                <div class="abb-side-brand">
+                    <img src="{ABB_LOGO_DATA_URL}" alt="ABB" />
+                    <div class="abb-side-title">Driver Analysis <strong>Copilot</strong></div>
                 </div>
             </div>
-            <div class="abb-brief">
-                <h3>Available context</h3>
-                <ul>
-                    <li><strong>Workbook DB:</strong> three SQLite tables from the notebook prototype.</li>
-                    <li><strong>Text-to-SQL:</strong> first routes to the right table, then generates SQL from that table only.</li>
-                    <li><strong>KPI text:</strong> unstructured PDF definitions extracted into one text file.</li>
-                    <li><strong>Simulator:</strong> what-if growth simulation for ELSP and ELSB driver values.</li>
-                </ul>
-            </div>
-            <div class="abb-side-section abb-samples">
-                <h3>Sample questions</h3>
-                <ul class="abb-sample-list">
-                    <li>Give me the bear, base, and bull forecast for ELSP.</li>
-                    <li>What is the actual growth for ELSB?</li>
-                    <li>Which drivers are selected for ELSP?</li>
-                    <li>Find the elasticity and driver name in ELSB with the highest contribution.</li>
-                    <li>Show the recommended range for Data Center / Hyperscaler.</li>
-                    <li>Get me the data for Data Center and orders for ELSP.</li>
-                    <li>Plot this as a line chart.</li>
-                    <li>What does China IIP mean?</li>
-                    <li>Simulate ELSP if Data Center growth is 30.</li>
-                    <li>Simulate ELSB if Copper Price is -5 and US Utility Capex is 30.</li>
-                </ul>
-            </div>
-        </section>
-        """,
+            """
+        ),
         unsafe_allow_html=True,
     )
 
-with right:
-    with st.container(border=True):
-        st.markdown(
-            """
-            <div class="abb-panel">
-                <p class="abb-eyebrow">Live trace</p>
-                <h3>Assistant steps</h3>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-        steps_placeholder = st.empty()
-        with steps_placeholder.container():
-            render_agent_steps()
-
-with center:
-    with st.container(border=True):
-        header_label_col, header_action_col = st.columns([0.78, 0.22], vertical_alignment="center")
-        with header_label_col:
-            st.markdown(
-                """
-                <div class="abb-chat-header">
-                    <p class="abb-chat-label">Assistant workspace</p>
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
-        with header_action_col:
-            if st.button("Clear", use_container_width=True):
-                st.session_state.messages = []
-                st.session_state.pending_prompt = None
+    # Suggested questions — wrapped in a card box
+    with st.container(key="sq_box"):
+        st.markdown('<p class="abb-side-label abb-sq-label" style="margin:0.1rem 0 0.5rem">Suggested questions</p>', unsafe_allow_html=True)
+        for idx, (icon, question) in enumerate(SUGGESTED_QUESTIONS):
+            if st.button(f"{icon}  {question}", key=f"chip_{idx}", use_container_width=True, disabled=is_processing):
+                submit_prompt(question)
                 st.rerun()
 
-        with st.container(height=chat_height, border=True):
-            if not st.session_state.messages:
-                with st.chat_message("assistant"):
-                    st.markdown("Hello. Send a message to test the ABB assistant prototype.")
+    # Recent conversations + profile
+    st.markdown(
+        _html(
+            f"""
+            <div class="abb-card-box abb-left-recent">
+                <p class="abb-side-label">Recent conversations</p>
+                {convo_html}
+            </div>
+            <div class="abb-card-box abb-left-profile">
+                <div class="abb-profile">
+                    <div class="abb-avatar">AM</div>
+                    <div>
+                        <div class="abb-profile-name">Anisha Mahanty</div>
+                        <div class="abb-profile-role">Data Scientist</div>
+                    </div>
+                </div>
+            </div>
+            """
+        ),
+        unsafe_allow_html=True,
+    )
 
-            for message in st.session_state.messages:
-                with st.chat_message(message["role"]):
-                    render_message_content(message["content"])
 
-            if is_processing:
-                with st.chat_message("assistant"):
-                    render_processing_indicator()
+# ---------------------------------------------------------------------------
+# Main area
+# ---------------------------------------------------------------------------
+with main_col:
+    # ---- Top KPI cards (F–J, dummy data) ----
+    st.markdown(
+        _html(
+            f"""
+            <div class="abb-kpi-row">
+                <div class="abb-kpi">
+                    <div class="abb-kpi-head">
+                        <div class="abb-kpi-icon">▦</div>
+                        <div>
+                            <div class="abb-kpi-title">Orders Growth (ELSP)</div>
+                            <div class="abb-kpi-sub">vs previous 6 months</div>
+                        </div>
+                    </div>
+                    <div class="abb-kpi-metric neg">-18.7%</div>
+                    <div class="abb-kpi-sub">Total Orders · <strong style="color:var(--ink);font-size:0.82rem;">$2.42B</strong></div>
+                    <span class="abb-pill">↓ Declined vs previous period</span>
+                </div>
+                <div class="abb-kpi">
+                    <div class="abb-kpi-head">
+                        <div class="abb-kpi-icon">📈</div>
+                        <div>
+                            <div class="abb-kpi-title">Orders Trend</div>
+                            <div class="abb-kpi-sub">Last 12 months</div>
+                        </div>
+                    </div>
+                    <svg viewBox="0 0 120 44" width="100%" height="40" preserveAspectRatio="none"><polyline points="{SPARK_TREND}" fill="none" stroke="#ff000f" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                    <div class="abb-kpi-foot">Trending down · <strong style="color:#ff000f;">-18.7%</strong></div>
+                </div>
+                <div class="abb-kpi">
+                    <div class="abb-kpi-head">
+                        <div class="abb-kpi-icon">▼</div>
+                        <div>
+                            <div class="abb-kpi-title">Top Negative Driver</div>
+                            <div class="abb-kpi-sub">Impact %</div>
+                        </div>
+                    </div>
+                    <div class="abb-kpi-strong">Data Center Demand</div>
+                    <div class="abb-kpi-metric sm neg">-7.2%</div>
+                    <div class="abb-kpi-sub">vs previous 6 months</div>
+                </div>
+                <div class="abb-kpi">
+                    <div class="abb-kpi-head">
+                        <div class="abb-kpi-icon">▲</div>
+                        <div>
+                            <div class="abb-kpi-title">Top Positive Driver</div>
+                            <div class="abb-kpi-sub">Impact %</div>
+                        </div>
+                    </div>
+                    <div class="abb-kpi-strong">Pricing / Realization</div>
+                    <div class="abb-kpi-metric sm pos">+4.3%</div>
+                    <div class="abb-kpi-sub">vs previous 6 months</div>
+                </div>
+                <div class="abb-kpi">
+                    <div class="abb-kpi-head">
+                        <div class="abb-kpi-icon">⚠</div>
+                        <div>
+                            <div class="abb-kpi-title">Largest Anomaly</div>
+                            <div class="abb-kpi-sub">vs normal range</div>
+                        </div>
+                    </div>
+                    <div class="abb-kpi-strong">Data Center Demand</div>
+                    <div class="abb-kpi-metric sm neg">-7.2%</div>
+                    <div class="abb-kpi-link">View details →</div>
+                </div>
+            </div>
+            """
+        ),
+        unsafe_allow_html=True,
+    )
 
-        st.markdown(
-            f"""<p class="abb-chat-footer">{len(st.session_state.messages)} messages</p>""",
-            unsafe_allow_html=True,
-        )
+    # ---- Conversation ----
+    st.markdown(
+        _html(
+            """
+            <div class="abb-copilot-head">
+                <div class="abb-copilot-badge">✦</div>
+                <div class="abb-copilot-name">ABB Copilot</div>
+            </div>
+            """
+        ),
+        unsafe_allow_html=True,
+    )
 
-prompt = st.chat_input("Message ABB Executive Assistant", disabled=is_processing)
+    conversation = st.container(height=CHAT_HEIGHT, border=False, key="abb_chatbox")
+    with conversation:
+        if not st.session_state.messages and not is_processing:
+            # Showcase / empty state: dummy answer + merged plot + key takeaways
+            with st.chat_message("assistant"):
+                st.markdown(
+                    "ELSP orders declined by **18.7%** in the last 6 months "
+                    "(Jan – Jun 2024 vs Jul – Dec 2023). The decline was driven primarily by "
+                    "weaker **Data Center demand**, partially offset by **pricing benefits**."
+                )
+                col_plot, col_takeaways = st.columns([1.5, 1], gap="medium")
+                with col_plot:
+                    st.markdown(
+                        _html(
+                            '<div class="abb-card"><h4>Driver Contribution '
+                            '<span class="abb-card-sub">· Jan – Jun 2024 vs Jul – Dec 2023</span></h4></div>'
+                        ),
+                        unsafe_allow_html=True,
+                    )
+                    st.image(get_showcase_plot(), use_container_width=True)
+                with col_takeaways:
+                    st.markdown(
+                        _html(
+                            """
+                            <div class="abb-card">
+                                <h4>Key Takeaways</h4>
+                                <div class="abb-takeaway"><div class="abb-tk-icon">↓</div>
+                                    <p>Data Center Demand decline was the largest contributor (-7.2%).</p></div>
+                                <div class="abb-takeaway"><div class="abb-tk-icon">↑</div>
+                                    <p>Pricing gains (+4.3% overall) helped offset part of the decline.</p></div>
+                                <div class="abb-takeaway"><div class="abb-tk-icon">i</div>
+                                    <p>Enterprise Demand showed improvement in the period.</p></div>
+                            </div>
+                            """
+                        ),
+                        unsafe_allow_html=True,
+                    )
 
+        for message in st.session_state.messages:
+            with st.chat_message(message["role"]):
+                render_message_content(message["content"])
+
+        if st.session_state.streaming_response:
+            response_to_stream = st.session_state.streaming_response
+            with st.chat_message("assistant"):
+                render_streaming_response(response_to_stream)
+            st.session_state.messages.append({"role": "assistant", "content": response_to_stream})
+            st.session_state.streaming_response = None
+
+        if is_processing:
+            with st.chat_message("assistant"):
+                st.markdown(
+                    _html(
+                        """
+                        <div class="abb-thinking">
+                            <span class="abb-thinking-ring"></span>
+                            <strong>Working on it…</strong>
+                        </div>
+                        """
+                    ),
+                    unsafe_allow_html=True,
+                )
+
+# ---- Input bar: docked at the very bottom (native Streamlit bottom dock), aligned to main column ----
+prompt = st.chat_input("Ask anything about your financial data…", disabled=is_processing)
 if prompt and not is_processing:
-    st.session_state.messages.append({"role": "user", "content": prompt})
-    st.session_state.agent_steps = []
-    st.session_state.pending_prompt = prompt
+    submit_prompt(prompt)
     st.rerun()
 
+
+# ---------------------------------------------------------------------------
+# Run the agent for a queued prompt
+# ---------------------------------------------------------------------------
 if st.session_state.pending_prompt:
     pending_prompt = st.session_state.pending_prompt
     history = st.session_state.messages
     if history and history[-1]["role"] == "user" and history[-1]["content"] == pending_prompt:
         history = history[:-1]
 
-    def trace_callback(title, detail=""):
-        st.session_state.agent_steps.append({"title": title, "detail": detail})
-        with steps_placeholder.container():
-            render_agent_steps()
-
-    set_trace_callback(trace_callback)
+    set_trace_callback(None)
     try:
         response = agent.respond(pending_prompt, history)
     except Exception as exc:
@@ -689,9 +725,7 @@ if st.session_state.pending_prompt:
             "I ran into an error while processing that request. "
             f"Details: {exc}"
         )
-    finally:
-        set_trace_callback(None)
 
-    st.session_state.messages.append({"role": "assistant", "content": response})
+    st.session_state.streaming_response = response
     st.session_state.pending_prompt = None
     st.rerun()

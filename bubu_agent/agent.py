@@ -1,6 +1,7 @@
 import json
 import os
 import sqlite3
+import time
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
@@ -1424,6 +1425,133 @@ class BubuAgent:
                 _emit_step("Graph", "Tool result trace node completed.")
             else:
                 _emit_step("Graph", f"{node_name} node completed.")
+
+    def _graph_update_events(self, update: dict) -> list[dict]:
+        events = []
+        for node_name, node_update in update.items():
+            if node_name == "assistant":
+                messages = node_update.get("messages", []) if isinstance(node_update, dict) else []
+                if not messages:
+                    events.append({"type": "node", "node": "assistant", "message": "Assistant node completed."})
+                    continue
+
+                last_message = messages[-1]
+                if getattr(last_message, "tool_calls", None):
+                    tool_names = ", ".join(call.get("name", "tool") for call in last_message.tool_calls)
+                    events.append(
+                        {
+                            "type": "node",
+                            "node": "assistant",
+                            "message": f"Assistant selected tool(s): {tool_names}.",
+                        }
+                    )
+                else:
+                    events.append(
+                        {
+                            "type": "node",
+                            "node": "assistant",
+                            "message": "Assistant prepared final answer.",
+                            "content": last_message.content,
+                        }
+                    )
+            elif node_name == "tools":
+                messages = node_update.get("messages", []) if isinstance(node_update, dict) else []
+                if messages:
+                    tool_names = ", ".join(getattr(message, "name", "") or "tool" for message in messages)
+                    events.append(
+                        {
+                            "type": "node",
+                            "node": "tools",
+                            "message": f"Tools returned result from {tool_names}.",
+                        }
+                    )
+                else:
+                    events.append({"type": "node", "node": "tools", "message": "Tools node completed."})
+            elif node_name == "tool_result_trace":
+                events.append(
+                    {
+                        "type": "node",
+                        "node": "tool_result_trace",
+                        "message": "Tool result trace node completed.",
+                    }
+                )
+            else:
+                events.append({"type": "node", "node": node_name, "message": f"{node_name} node completed."})
+        return events
+
+    def _stream_text_events(self, content: str):
+        words = content.split(" ")
+        for index, word in enumerate(words):
+            suffix = "" if index == len(words) - 1 else " "
+            yield {"type": "delta", "text": f"{word}{suffix}"}
+            time.sleep(0.025)
+
+    def respond_stream(self, user_message, history=None):
+        history = history or []
+        normalized = user_message.strip().lower()
+        conversation_context = _conversation_context(history, user_message)
+
+        yield {"type": "node", "node": "assistant", "message": "Assistant received user message."}
+
+        if normalized in {"no", "nothing", "done", "no thanks", "stop", "that's all", "thats all"}:
+            content = "Thank you. Have a great day."
+            yield {"type": "node", "node": "assistant", "message": "Assistant prepared final answer.", "content": content}
+            yield {"type": "final", "content": content}
+            return
+
+        structured_context = _structured_cache_context()
+        if structured_context and _is_followup_plot_request(user_message):
+            yield {"type": "node", "node": "assistant", "message": "Assistant sent latest structured data to plotter."}
+            tool_result = plot_tool.invoke(
+                {
+                    "plot_request": user_message,
+                    "previous_messages": f"{conversation_context}\n\n{structured_context}",
+                }
+            )
+            yield {"type": "node", "node": "tools", "message": "Tools returned result from plot_tool."}
+            content = f"{tool_result}\n\nCan I help you with anything else?"
+            yield {"type": "node", "node": "assistant", "message": "Assistant prepared final answer.", "content": content}
+            yield {"type": "final", "content": content}
+            return
+
+        messages = _to_langchain_messages(history)
+        if structured_context:
+            messages.append(
+                SystemMessage(
+                    content=(
+                        "Latest raw structured result for plotting. Use this "
+                        "as previous_messages for plot_tool when the user asks "
+                        f"for a follow-up plot.\n{structured_context}"
+                    )
+                )
+            )
+        messages.append(HumanMessage(content=user_message))
+
+        yield {"type": "node", "node": "assistant", "message": "Assistant started processing request."}
+        result = None
+        final_content = ""
+        for update in self.graph.stream(
+            {"messages": messages},
+            {"recursion_limit": 12},
+            stream_mode="updates",
+        ):
+            for event in self._graph_update_events(update):
+                yield event
+                if event.get("content"):
+                    final_content = event["content"]
+            for node_update in update.values():
+                if isinstance(node_update, dict) and "messages" in node_update:
+                    if result is None:
+                        result = {"messages": []}
+                    result["messages"].extend(node_update["messages"])
+
+        if not final_content and result and result.get("messages"):
+            final_content = result["messages"][-1].content
+        if not final_content:
+            final_content = "I could not complete that request."
+
+        yield {"type": "node", "node": "assistant", "message": "Assistant completed request."}
+        yield {"type": "final", "content": final_content}
 
     def respond(self, user_message, history=None):
         history = history or []
