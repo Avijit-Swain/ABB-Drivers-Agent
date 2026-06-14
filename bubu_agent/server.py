@@ -680,7 +680,6 @@ class BubuRequestHandler(BaseHTTPRequestHandler):
             length = int(self.headers.get("Content-Length", "0"))
             payload = json.loads(self.rfile.read(length).decode("utf-8"))
             message = str(payload.get("message", "")).strip()
-            history = payload.get("history", [])
             if not message:
                 self._send_json(400, {"error": "Message is required."})
                 return
@@ -690,7 +689,6 @@ class BubuRequestHandler(BaseHTTPRequestHandler):
             if parsed.path == "/api/chat/stream":
                 self._send_stream_headers()
 
-                conversation_id = str(payload.get("conversationId") or "").strip()
                 is_new = not conversation_id or not _conversation_exists(conversation_id)
                 if is_new:
                     conversation_id = _create_conversation()
@@ -706,6 +704,12 @@ class BubuRequestHandler(BaseHTTPRequestHandler):
                     "is_new": is_new,
                 })
                 _save_message(conversation_id, "user", message, message, "", [])
+
+                history = [
+                    {"role": m["role"], "content": m.get("visible_text") or m.get("content") or ""}
+                    for m in _get_conversation_messages(conversation_id)
+                    if m["role"] in ("user", "assistant")
+                ]
 
                 final_content = ""
                 parsed_result = None
@@ -737,7 +741,12 @@ class BubuRequestHandler(BaseHTTPRequestHandler):
                 _touch_conversation(conversation_id)
                 return
 
-            response = agent.respond(message, history, conversation_id=conversation_id)
+            db_history = [
+                {"role": m["role"], "content": m.get("visible_text") or m.get("content") or ""}
+                for m in (_get_conversation_messages(conversation_id) if conversation_id else [])
+                if m["role"] in ("user", "assistant")
+            ]
+            response = agent.respond(message, db_history, conversation_id=conversation_id)
             self._send_json(200, _parse_agent_content(response))
         except Exception as exc:
             if parsed.path == "/api/chat/stream":

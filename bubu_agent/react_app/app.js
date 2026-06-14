@@ -827,11 +827,6 @@ function App() {
       plotUrls: [],
       statusText: "Working on it",
     };
-    const history = messages.map((message) => ({
-      role: message.role,
-      content: message.visibleText || message.content || "",
-    }));
-
     setMessages((current) => [...current, userMessage, assistantMessage]);
     setIsWorking(true);
 
@@ -852,7 +847,7 @@ function App() {
       const response = await fetch("/api/chat/stream", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: prompt, history, conversationId }),
+        body: JSON.stringify({ message: prompt, conversationId }),
       });
       if (!response.ok) {
         const payload = await response.json();
