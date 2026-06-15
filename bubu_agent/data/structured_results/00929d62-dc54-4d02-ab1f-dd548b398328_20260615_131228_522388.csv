@@ -1,0 +1,3 @@
+division,selected_driver_name,driver_direction,rationale_short
+ELSB,Copper Price,Negative,Selected as a commodity price indicator; higher copper prices can create cost pressure and dampen order momentum.
+ELSB,Europe Producer Price Index,Negative,Selected as a producer-price inflation indicator that can reflect cost pressure in Europe.

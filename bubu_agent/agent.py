@@ -42,12 +42,14 @@ LAST_STRUCTURED_RESULT = {
 
 
 class PlotSpec(BaseModel):
-    chart_type: Literal["line", "bar", "waterfall"]
+    chart_type: Literal["line", "bar", "bar_horizontal", "bar_colored", "bar_stacked", "dual_axis_line", "waterfall"]
     x_col: str
     y_cols: List[str]
     title: str
     x_label: str
     y_label: str
+    y2_label: Optional[str] = None  # only for dual_axis_line
+    colors: Optional[List[str]] = None  # user-specified colors; None = use defaults
 
 
 def set_trace_callback(callback):
@@ -396,6 +398,8 @@ Rules:
 - For Monthly_Data time filtering or ordering, use date.
 - If the user asks for highest, lowest, top, or bottom, ORDER BY the relevant numeric column.
 - For plot data, return simple columns that can be plotted, ideally label/value or date/value.
+- CRITICAL: If the user asks to compare BOTH divisions (mentions ELSP and ELSB together), write ONE single query with NO division WHERE filter. Always include the `division` column in SELECT so both divisions are returned together. Use LIMIT 120 for Monthly_Data comparisons. Example: SELECT date, division, orders_received_net_musd FROM Monthly_Data ORDER BY date LIMIT 120
+- If only one division is mentioned, filter with LOWER(division) = LOWER('ELSP') or LOWER('ELSB') and LIMIT 50.
 """
 
     try:
@@ -436,6 +440,21 @@ def _structured_cache_context() -> str:
     )
 
 
+def _restore_csv_path(conversation_id: str) -> str:
+    """Return the most recent CSV saved for this conversation (for follow-up plot requests)."""
+    if not conversation_id or conversation_id == "unknown":
+        return ""
+    try:
+        matches = sorted(
+            STRUCTURED_RESULTS_DIR.glob(f"{conversation_id}_*.csv"),
+            key=lambda p: p.stat().st_mtime,
+            reverse=True,
+        )
+        return str(matches[0]) if matches else ""
+    except Exception:
+        return ""
+
+
 def _fallback_table(question: str) -> str:
     normalized = question.lower()
     if any(term in normalized for term in ["monthly", "trend", "over time", "time series", "against", "versus", " vs ", "historical"]):
@@ -447,19 +466,23 @@ def _fallback_table(question: str) -> str:
 
 def _fallback_sql(question: str, table_name: str) -> str:
     normalized = question.lower()
+    has_elsp = "elsp" in normalized
+    has_elsb = "elsb" in normalized
     division_filter = ""
-    if "elsp" in normalized:
+    if has_elsp and not has_elsb:
         division_filter = " WHERE LOWER(division) = LOWER('ELSP')"
-    elif "elsb" in normalized:
+    elif has_elsb and not has_elsp:
         division_filter = " WHERE LOWER(division) = LOWER('ELSB')"
+    # both mentioned → no filter, return all divisions
 
+    limit = 50 if division_filter else 120
     if table_name == "Monthly_Data":
         if "data center" in normalized or "hyperscaler" in normalized:
             return (
                 "SELECT date, division, orders_received_net_musd, data_center___hyperscaler "
-                f"FROM Monthly_Data{division_filter} ORDER BY date LIMIT 120"
+                f"FROM Monthly_Data{division_filter} ORDER BY date LIMIT {limit}"
             )
-        return f"SELECT * FROM Monthly_Data{division_filter} ORDER BY date LIMIT 120"
+        return f"SELECT date, division, orders_received_net_musd FROM Monthly_Data{division_filter} ORDER BY date LIMIT {limit}"
 
     if table_name == "Driver_Contribution_KB":
         order = ""
@@ -761,6 +784,14 @@ def _fallback_unstructured_answer(question: str, content: str) -> str:
 _ABB_COLORS = ["#FF000F", "#19202C", "#2563EB", "#10B981", "#F59E0B", "#7C3AED"]
 
 
+def _resolve_colors(spec_colors: Optional[List[str]], n: int) -> List[str]:
+    if spec_colors and all(isinstance(c, str) and c.strip() for c in spec_colors):
+        base = spec_colors
+    else:
+        base = _ABB_COLORS
+    return [base[i % len(base)] for i in range(n)]
+
+
 def _abb_layout(fig, title: str, x_label: str, y_label: str):
     DARK = "#111827"
     MID = "#1d2939"
@@ -797,23 +828,25 @@ def _abb_layout(fig, title: str, x_label: str, y_label: str):
     )
 
 
-def _plot_line(df, x_col: str, y_cols: List[str], title: str, x_label: str, y_label: str):
+def _plot_line(df, x_col: str, y_cols: List[str], title: str, x_label: str, y_label: str, colors: Optional[List[str]] = None):
     import plotly.graph_objects as go
+    resolved = _resolve_colors(colors, len(y_cols))
     fig = go.Figure()
     for i, col in enumerate(y_cols):
         fig.add_trace(go.Scatter(
             x=df[x_col], y=df[col],
             mode="lines+markers",
             name=col.replace("_", " ").title(),
-            line=dict(color=_ABB_COLORS[i % len(_ABB_COLORS)], width=2.5),
+            line=dict(color=resolved[i], width=2.5),
             marker=dict(size=5),
         ))
     _abb_layout(fig, title, x_label, y_label)
     return fig
 
 
-def _plot_bar(df, x_col: str, y_cols: List[str], title: str, x_label: str, y_label: str):
+def _plot_bar(df, x_col: str, y_cols: List[str], title: str, x_label: str, y_label: str, colors: Optional[List[str]] = None):
     import plotly.graph_objects as go
+    resolved = _resolve_colors(colors, len(y_cols))
     fig = go.Figure()
     for i, col in enumerate(y_cols):
         vals = df[col]
@@ -827,7 +860,7 @@ def _plot_bar(df, x_col: str, y_cols: List[str], title: str, x_label: str, y_lab
             y=vals,
             name=col.replace("_", " ").title(),
             marker=dict(
-                color=_ABB_COLORS[i % len(_ABB_COLORS)],
+                color=resolved[i],
                 opacity=0.9,
                 line=dict(width=0),
             ),
@@ -853,18 +886,18 @@ def _plot_bar(df, x_col: str, y_cols: List[str], title: str, x_label: str, y_lab
 def _plot_waterfall(df, x_col: str, value_col: str, title: str, x_label: str, y_label: str):
     import plotly.graph_objects as go
     n = len(df)
-    if n < 3:
+    if n < 2:
         return _plot_bar(df, x_col, [value_col], title, x_label, y_label)
-    measure = ["absolute"] + ["relative"] * (n - 2) + ["total"]
+
     vals = df[value_col].tolist()
-    text_vals = [
-        (f"+{v:,.1f}" if v >= 0 else f"{v:,.1f}") if m == "relative" else f"{v:,.1f}"
-        for v, m in zip(vals, measure)
-    ]
+    labels = df[x_col].tolist()
+    measure = ["relative"] * n
+    text_vals = [f"+{v:,.1f}" if v >= 0 else f"{v:,.1f}" for v in vals]
+
     fig = go.Figure(go.Waterfall(
         orientation="v",
         measure=measure,
-        x=df[x_col].tolist(),
+        x=labels,
         y=vals,
         text=text_vals,
         textposition="outside",
@@ -875,6 +908,106 @@ def _plot_waterfall(df, x_col: str, value_col: str, title: str, x_label: str, y_
         totals=dict(marker=dict(color="#1d2939", line=dict(width=0))),
         cliponaxis=False,
     ))
+    _abb_layout(fig, title, x_label, y_label)
+    return fig
+
+
+def _plot_dual_axis_line(df, x_col: str, y_cols: List[str], title: str, x_label: str, y_label: str, y2_label: str = "", colors: Optional[List[str]] = None):
+    import plotly.graph_objects as go
+    resolved = _resolve_colors(colors, 2)
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(
+        x=df[x_col], y=df[y_cols[0]],
+        name=y_cols[0].replace("_", " ").title(),
+        mode="lines+markers",
+        line=dict(color=resolved[0], width=2.5),
+        marker=dict(size=5),
+        yaxis="y1",
+    ))
+    if len(y_cols) > 1:
+        fig.add_trace(go.Scatter(
+            x=df[x_col], y=df[y_cols[1]],
+            name=y_cols[1].replace("_", " ").title(),
+            mode="lines+markers",
+            line=dict(color=resolved[1], width=2.5, dash="dot"),
+            marker=dict(size=5),
+            yaxis="y2",
+        ))
+    _abb_layout(fig, title, x_label, y_label)
+    fig.update_layout(
+        yaxis2=dict(
+            title=dict(text=y2_label or (y_cols[1].replace("_", " ").title() if len(y_cols) > 1 else ""), font=dict(size=15, color=resolved[1], family="Arial")),
+            overlaying="y",
+            side="right",
+            showgrid=False,
+            tickfont=dict(size=13, color=resolved[1], family="Arial"),
+        ),
+        margin=dict(l=80, r=80, t=70, b=70),
+    )
+    return fig
+
+
+def _plot_bar_horizontal(df, x_col: str, y_cols: List[str], title: str, x_label: str, y_label: str, colors: Optional[List[str]] = None):
+    import plotly.graph_objects as go
+    resolved = _resolve_colors(colors, 1)
+    col = y_cols[0]
+    df_sorted = df.sort_values(col).reset_index(drop=True)
+    vals = df_sorted[col]
+    text_vals = [f"{v:,.1f}" if abs(v) < 1000 else f"{v:,.0f}" for v in vals]
+    fig = go.Figure(go.Bar(
+        x=vals,
+        y=df_sorted[x_col],
+        orientation="h",
+        marker=dict(color=resolved[0], opacity=0.9, line=dict(width=0)),
+        text=text_vals,
+        textposition="outside",
+        textfont=dict(size=12, color="#111827", family="Arial"),
+        cliponaxis=False,
+    ))
+    max_val = vals.max()
+    fig.update_layout(
+        xaxis=dict(range=[0, max_val * 1.22]),
+        margin=dict(l=180, r=60, t=70, b=70),
+    )
+    _abb_layout(fig, title, y_label, x_label)
+    fig.update_layout(xaxis_title=y_label, yaxis_title=x_label)
+    return fig
+
+
+def _plot_bar_colored(df, x_col: str, y_cols: List[str], title: str, x_label: str, y_label: str):
+    import plotly.graph_objects as go
+    col = y_cols[0]
+    vals = df[col]
+    colors = ["#10B981" if v >= 0 else "#EF4444" for v in vals]
+    text_vals = [f"+{v:,.1f}" if v > 0 else f"{v:,.1f}" for v in vals]
+    fig = go.Figure(go.Bar(
+        x=df[x_col],
+        y=vals,
+        marker=dict(color=colors, opacity=0.9, line=dict(width=0)),
+        text=text_vals,
+        textposition="outside",
+        textfont=dict(size=12, color="#111827", family="Arial"),
+        cliponaxis=False,
+    ))
+    max_val = vals.max() if vals.max() > 0 else 0
+    min_val = vals.min() if vals.min() < 0 else 0
+    fig.update_layout(yaxis=dict(range=[min_val * 1.20, max_val * 1.20]))
+    _abb_layout(fig, title, x_label, y_label)
+    return fig
+
+
+def _plot_bar_stacked(df, x_col: str, y_cols: List[str], title: str, x_label: str, y_label: str, colors: Optional[List[str]] = None):
+    import plotly.graph_objects as go
+    resolved = _resolve_colors(colors, len(y_cols))
+    fig = go.Figure()
+    for i, col in enumerate(y_cols):
+        fig.add_trace(go.Bar(
+            x=df[x_col],
+            y=df[col],
+            name=col.replace("_", " ").title(),
+            marker=dict(color=resolved[i], opacity=0.9, line=dict(width=0)),
+        ))
+    fig.update_layout(barmode="stack", bargap=0.28)
     _abb_layout(fig, title, x_label, y_label)
     return fig
 
@@ -905,15 +1038,26 @@ Sample (first 3 rows):
 
 User request: {plot_request}
 
-Rules:
-- line: time-series, trends over time, date/month columns present
-- bar: categorical comparisons, rankings, driver comparison
-- waterfall: contribution/decomposition breakdown (needs >= 3 rows: base, deltas, total)
-- x_col: the category or time axis column name (must exist in the columns list above)
-- y_cols: one or more numeric column names to plot (must exist in the columns list above)
-- For waterfall: exactly one y_col
+Chart type rules — pick exactly one:
+- line: one or more time-series on a single plot (same y-axis scale). Use when date/month column is present. y_cols can have multiple columns — each becomes a separate colored line.
+- dual_axis_line: exactly two series with very different scales (e.g. orders in MUSD vs an index value). First series → left y-axis (y_label), second series → right y-axis (y2_label). y_cols must have exactly 2 columns.
+- bar: grouped categorical comparison (multiple y_cols = grouped bars side by side). Use for rankings or comparing 2-3 divisions/scenarios.
+- bar_horizontal: horizontal bar chart. Use when x-axis labels are long (driver names, division names) or when ranking many items. Single y_col only. Sorted ascending.
+- bar_colored: vertical bar chart where positive values are green and negative values are red. Use for driver impacts, contributions, or any mix of positive/negative values.
+- bar_stacked: stacked bar chart. Use when showing composition or parts of a whole across categories. Multiple y_cols stacked.
+- waterfall: bridge/decomposition chart. Use for contribution breakdown (baseline → driver deltas → total). Needs >= 3 rows. Exactly one y_col.
+
+Column mapping rules:
+- x_col: category or time axis column name (must exist in columns above)
+- y_cols: list of numeric column names to plot (must exist in columns above)
+- For dual_axis_line: exactly 2 y_cols; set y2_label for the right axis label
+- For waterfall / bar_horizontal / bar_colored: exactly 1 y_col
 - title: descriptive business-friendly title
-- x_label / y_label: clear axis labels"""
+- x_label / y_label: clear axis labels
+
+Colors rule:
+- Leave `colors` as null UNLESS the user explicitly asks for specific colors (e.g. "use blue and green", "make it red"). When null, the system uses the default ABB color palette automatically.
+- If the user does request colors, provide a list of valid CSS hex codes or color names matching the number of series."""
     structured_llm = ChatOpenAI(
         model=os.getenv("OPENAI_MODEL", "gpt-4.1"),
         api_key=os.getenv("OPENAI_API_KEY"),
@@ -932,6 +1076,21 @@ def _run_plotly_pipeline(plot_request: str, csv_path: str) -> str:
         return json.dumps({"status": "error", "message": f"Could not read data: {exc}"})
     if df.empty:
         return json.dumps({"status": "no_data_found", "message": "Data is empty, nothing to plot."})
+
+    # Auto-pivot long format to wide when division column has multiple values
+    # e.g. date|division|orders → date|ELSP|ELSB
+    if "division" in df.columns and df["division"].nunique() > 1:
+        date_cols = [c for c in df.columns if "date" in c.lower() or c.lower() in ("month", "year", "period")]
+        value_cols = df.select_dtypes(include="number").columns.tolist()
+        if date_cols and value_cols:
+            pivot_col = date_cols[0]
+            pivot_value = value_cols[0]
+            try:
+                df = df.pivot(index=pivot_col, columns="division", values=pivot_value).reset_index()
+                df.columns.name = None
+            except Exception:
+                pass  # if pivot fails (e.g. duplicate dates), keep original
+
     try:
         spec = _get_plot_spec(plot_request, df)
     except Exception as exc:
@@ -943,16 +1102,26 @@ def _run_plotly_pipeline(plot_request: str, csv_path: str) -> str:
     if not spec.y_cols:
         numeric_cols = df.select_dtypes(include="number").columns.tolist()
         spec.y_cols = [numeric_cols[0]] if numeric_cols else [df.columns[-1]]
-    # Waterfall fallback
+    # Fallbacks
     if spec.chart_type == "waterfall" and len(df) < 3:
-        spec.chart_type = "bar"
+        spec.chart_type = "bar_colored"
+    if spec.chart_type == "dual_axis_line" and len(spec.y_cols) < 2:
+        spec.chart_type = "line"
     try:
         if spec.chart_type == "line":
-            fig = _plot_line(df, spec.x_col, spec.y_cols, spec.title, spec.x_label, spec.y_label)
+            fig = _plot_line(df, spec.x_col, spec.y_cols, spec.title, spec.x_label, spec.y_label, spec.colors)
+        elif spec.chart_type == "dual_axis_line":
+            fig = _plot_dual_axis_line(df, spec.x_col, spec.y_cols, spec.title, spec.x_label, spec.y_label, spec.y2_label or "", spec.colors)
+        elif spec.chart_type == "bar_horizontal":
+            fig = _plot_bar_horizontal(df, spec.x_col, spec.y_cols, spec.title, spec.x_label, spec.y_label, spec.colors)
+        elif spec.chart_type == "bar_colored":
+            fig = _plot_bar_colored(df, spec.x_col, spec.y_cols, spec.title, spec.x_label, spec.y_label)
+        elif spec.chart_type == "bar_stacked":
+            fig = _plot_bar_stacked(df, spec.x_col, spec.y_cols, spec.title, spec.x_label, spec.y_label, spec.colors)
         elif spec.chart_type == "waterfall":
             fig = _plot_waterfall(df, spec.x_col, spec.y_cols[0], spec.title, spec.x_label, spec.y_label)
         else:
-            fig = _plot_bar(df, spec.x_col, spec.y_cols, spec.title, spec.x_label, spec.y_label)
+            fig = _plot_bar(df, spec.x_col, spec.y_cols, spec.title, spec.x_label, spec.y_label, spec.colors)
     except Exception as exc:
         return json.dumps({"status": "error", "message": f"Plot rendering failed: {exc}"})
     PLOTS_DIR.mkdir(exist_ok=True)
@@ -960,7 +1129,7 @@ def _run_plotly_pipeline(plot_request: str, csv_path: str) -> str:
     plot_path = PLOTS_DIR / f"{ts}_plotly.png"
     latest_plot_path = PLOTS_DIR / "latest_plot.png"
     try:
-        fig.write_image(str(plot_path), width=960, height=480, scale=2)
+        fig.write_image(str(plot_path), width=960, height=480, scale=3)
         shutil.copy(str(plot_path), str(latest_plot_path))
     except Exception as exc:
         return json.dumps({"status": "error", "message": f"Plot save failed: {exc}"})
@@ -976,8 +1145,31 @@ def _run_plotly_pipeline(plot_request: str, csv_path: str) -> str:
 
 def _is_followup_plot_request(plot_request: str) -> bool:
     normalized = plot_request.lower().strip()
-    if len(normalized.split()) <= 5 and any(term in normalized for term in ["plot", "chart", "graph", "visual"]):
+    words = normalized.split()
+
+    PLOT_TERMS = {"plot", "chart", "graph", "visual", "visualize", "visualise"}
+    COLOR_TERMS = {"color", "colour", "blue", "red", "green", "yellow", "orange", "purple", "black", "grey", "gray", "pink", "teal", "cyan"}
+    CHART_TYPES = {"line", "bar", "waterfall", "horizontal", "stacked", "dual"}
+    CHANGE_VERBS = {"use", "change", "switch", "show", "make", "display", "convert", "try"}
+
+    has_plot = any(t in normalized for t in PLOT_TERMS)
+    has_color = any(t in normalized for t in COLOR_TERMS)
+    has_type = any(t in normalized for t in CHART_TYPES)
+    has_verb = any(t in normalized for t in CHANGE_VERBS)
+
+    # Short messages with a plot term
+    if len(words) <= 6 and has_plot:
         return True
+    # Explicit plot + color request ("use blue and red to plot")
+    if has_plot and has_color:
+        return True
+    # Color-change implies replot ("use blue and green", "change colors to red")
+    if has_color and has_verb:
+        return True
+    # Chart type switch ("change to line chart", "make it a bar")
+    if has_type and has_verb:
+        return True
+
     return any(
         phrase in normalized
         for phrase in [
@@ -1156,6 +1348,7 @@ Important routing rules:
 - Do not call plot_tool after structured_data_tool — a chart is auto-generated after every structured data result.
 - Do not use structured_data_tool again for "plot this", "chart this", or "graph the above" if the needed data is already available in recent conversation.
 - Do not invent values. If data is needed, call the correct tool.
+- CRITICAL: When the user asks to compare BOTH divisions (ELSP and ELSB), call structured_data_tool ONLY ONCE with a question that includes both divisions. Do NOT call the tool separately for each division.
 
 Time-series response rules:
 - For monthly or time-series data, list few data points in the final answer if there are a lot of datapoints by default .
@@ -1482,13 +1675,12 @@ class BubuAgent:
             return
 
         structured_context = _structured_cache_context()
-        if structured_context and _is_followup_plot_request(user_message):
+        # Restore CSV path from disk if cache was cleared (follow-up across turns)
+        if not _LAST_CSV_PATH.get("path") and conversation_id:
+            _LAST_CSV_PATH["path"] = _restore_csv_path(conversation_id)
+        if (structured_context or _LAST_CSV_PATH.get("path")) and _is_followup_plot_request(user_message):
             yield {"type": "node", "node": "assistant", "message": "Assistant sent latest structured data to plotter."}
-            tool_result = plot_tool.invoke(
-                {
-                    "plot_request": user_message,
-                }
-            )
+            tool_result = plot_tool.invoke({"plot_request": user_message})
             yield {"type": "node", "node": "tools", "message": "Tools returned result from plot_tool."}
             content = f"{tool_result}\n\nCan I help you with anything else?"
             yield {"type": "node", "node": "assistant", "message": "Assistant prepared final answer.", "content": content}
@@ -1549,7 +1741,10 @@ class BubuAgent:
             return "Thank you. Have a great day."
 
         structured_context = _structured_cache_context()
-        if structured_context and _is_followup_plot_request(user_message):
+        # Restore CSV path from disk if cache was cleared (follow-up across turns)
+        if not _LAST_CSV_PATH.get("path") and conversation_id:
+            _LAST_CSV_PATH["path"] = _restore_csv_path(conversation_id)
+        if (structured_context or _LAST_CSV_PATH.get("path")) and _is_followup_plot_request(user_message):
             _emit_step("Assistant", "Sending latest structured data to plotter.")
             tool_result = plot_tool.invoke({"plot_request": user_message})
             _emit_step("Assistant", "Completed request.")

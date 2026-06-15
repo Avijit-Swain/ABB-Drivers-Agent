@@ -45,6 +45,7 @@ def _parse_agent_content(content: str) -> dict:
     technical_prefixes = (
         "Plot generated at:",
         "Latest plot copy:",
+        "Plot displayed successfully.",
         "Chart type:",
         "Color palette:",
         "SQL used:",

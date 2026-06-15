@@ -913,7 +913,7 @@ function App() {
       }
 
       if (pendingFinal) {
-        const finalVisibleText = pendingFinal.visibleText || pendingFinal.content || "";
+        const finalVisibleText = pendingFinal.visibleText || "";
         const finalPlotUrls = pendingFinal.plotUrls || [];
         const isStructured = finalPlotUrls.length > 0;
 
