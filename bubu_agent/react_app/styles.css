@@ -908,10 +908,11 @@ textarea {
   display: flex;
   flex-direction: column;
   min-height: 0;
+  padding: 0.75rem 0.5rem 0.75rem;
 }
 
 .landing-image-wrap {
-  margin-top: -0.5rem;
+  margin-top: 0;
   border-radius: 12px;
   overflow: hidden;
 }
