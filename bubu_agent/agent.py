@@ -1305,21 +1305,43 @@ class BubuAgent:
     def _summarization_node(self, state: MessagesState):
         messages = state["messages"]
 
+        # Find the current user question (last HumanMessage) and its index
         user_question = ""
-        for msg in reversed(messages):
-            if isinstance(msg, HumanMessage):
-                user_question = str(msg.content)
+        current_q_idx = len(messages)
+        for i in range(len(messages) - 1, -1, -1):
+            if isinstance(messages[i], HumanMessage):
+                user_question = str(messages[i].content)
+                current_q_idx = i
                 break
 
+        # Build conversation history from messages before the current question
+        # Only include clean Human/AI pairs — skip tool routing AIMessages (those have tool_calls)
+        history_parts = []
+        for msg in messages[:current_q_idx]:
+            if isinstance(msg, HumanMessage):
+                history_parts.append(f"User: {msg.content}")
+            elif isinstance(msg, AIMessage) and not getattr(msg, "tool_calls", None):
+                content = str(msg.content).strip()
+                if content:
+                    history_parts.append(f"Assistant: {content}")
+
+        # Tool results from the current turn only
         relevant_tools = ("structured_data_tool", "unstructured_kpi_tool", "simulation_tool")
         tool_parts = []
-        for msg in messages:
+        for msg in messages[current_q_idx:]:
             name = getattr(msg, "name", None)
             if name in relevant_tools:
                 tool_parts.append(f"[{name}]\n{msg.content}")
 
         tool_data_str = "\n\n".join(tool_parts) if tool_parts else "No tool data retrieved."
-        summarization_input = f"User question: {user_question}\n\nTool results:\n{tool_data_str}"
+
+        # Keep last 10 history lines to avoid overwhelming the context
+        history_str = "\n".join(history_parts[-10:]) if history_parts else ""
+
+        summarization_input = ""
+        if history_str:
+            summarization_input += f"Conversation history:\n{history_str}\n\n"
+        summarization_input += f"User question: {user_question}\n\nTool results:\n{tool_data_str}"
 
         _emit_step("Summarization", "Generating final summary.")
         response = self.llm.invoke([
