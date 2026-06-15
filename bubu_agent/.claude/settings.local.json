@@ -63,7 +63,9 @@
       "Bash(python -m pip install plotly kaleido -q)",
       "Bash(python *)",
       "Bash(pkill -f \"server.py\")",
-      "Bash(/opt/anaconda3/bin/python server.py)"
+      "Bash(/opt/anaconda3/bin/python server.py)",
+      "Bash(/opt/anaconda3/bin/python server.py --port 8501)",
+      "Bash(pkill -f \"streamlit\")"
     ]
   }
 }

@@ -853,7 +853,7 @@ class BubuRequestHandler(BaseHTTPRequestHandler):
             self._send_json(404, {"error": "Not found"})
 
 
-def run(host: str = "0.0.0.0", port: int = 8500):
+def run(host: str = "0.0.0.0", port: int = 8501):
     server = ThreadingHTTPServer((host, port), BubuRequestHandler)
     print(f"React Decision Insights Copilot running at http://localhost:{port}")
     server.serve_forever()
