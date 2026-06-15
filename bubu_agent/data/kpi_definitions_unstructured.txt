@@ -160,3 +160,517 @@ infrastructure.
 Possible synonyms /
 user terms
 China coal mining, mining activity, coal output, lignite mining, coal and lignite
+
+
+--- Section: Candidate Driver Evaluation and Selection Reasoning ---
+
+Purpose
+This section explains why each driver was selected or not selected for each division (ELSP, ELSB, ELDS).
+Use it when the user asks:
+- Why was [driver] selected for [division]?
+- Why was [driver] not selected or rejected for [division]?
+- What outperformed [driver] for [division]?
+- Which drivers were evaluated but not chosen for [division]?
+- Compare [driver A] vs [driver B] for a given division.
+- What is the signal strength or business relevance of [driver] for [division]?
+
+Each entry includes: selection status, scoring dimensions, reason, statistical and business rationale,
+what it was outperformed by (if rejected), and a pre-written chatbot response.
+
+Scoring dimensions:
+- Signal Strength: strength of statistical signal (Very High / High / Medium / Low)
+- Business Relevance: closeness to the division's demand drivers (Very High / High / Medium / Low)
+- Incremental Fit: how much it added beyond already-selected drivers (High / Medium / Low)
+- Collinearity Risk: overlap with other drivers (Low / Low-Medium / Medium / High)
+
+==============================================================
+DIVISION: ELSP
+==============================================================
+
+[Driver: Data Center / Hyperscaler]
+Status: Selected (Rank 1)
+Signal Strength: Very High | Business Relevance: Very High | Incremental Fit: High | Collinearity Risk: Low/Medium
+Reason: Selected because AI/data-center capex is a direct demand proxy for electrification and power-distribution orders.
+Statistical reason: The driver showed Very High signal strength, High incremental fit, and Low/Medium collinearity risk during selection.
+Business reason: Selected because AI/data-center capex is a direct demand proxy for electrification and power-distribution orders.
+Outperformed by: None
+Comparison: It outperformed broad macro KPIs because it captures a sharper, sector-specific demand cycle.
+Response: Yes. Data Center / Hyperscaler was evaluated and selected for ELSP. It was retained because it had a strong business linkage, useful statistical signal, and added incremental explanatory value beyond broader macro indicators. In simple terms, it helped explain ELSP orders better than more generic indicators.
+
+[Driver: US Utility Capex]
+Status: Selected (Rank 2)
+Signal Strength: High | Business Relevance: Very High | Incremental Fit: High | Collinearity Risk: Low/Medium
+Reason: Selected because utility investment directly reflects grid, power and electrification spend.
+Statistical reason: The driver showed High signal strength, High incremental fit, and Low/Medium collinearity risk during selection.
+Business reason: Selected because utility investment directly reflects grid, power and electrification spend.
+Outperformed by: None
+Comparison: It provides clearer business proximity than broad economic activity indicators.
+Response: Yes. US Utility Capex was evaluated and selected for ELSP. It was retained because it had a strong business linkage, useful statistical signal, and added incremental explanatory value beyond broader macro indicators. In simple terms, it helped explain ELSP orders better than more generic indicators.
+
+[Driver: Electrical Equipment PPI]
+Status: Selected (Rank 3)
+Signal Strength: High | Business Relevance: High | Incremental Fit: Medium | Collinearity Risk: Low/Medium
+Reason: Selected because it captures sector-specific pricing and demand conditions for electrical equipment.
+Statistical reason: The driver showed High signal strength, Medium incremental fit, and Low/Medium collinearity risk during selection.
+Business reason: Selected because it captures sector-specific pricing and demand conditions for electrical equipment.
+Outperformed by: None
+Comparison: It is closer to the order environment than generic inflation or GDP metrics.
+Response: Yes. Electrical Equipment PPI was evaluated and selected for ELSP. It was retained because it had a strong business linkage, useful statistical signal, and added incremental explanatory value beyond broader macro indicators. In simple terms, it helped explain ELSP orders better than more generic indicators.
+
+[Driver: Operational Sales Expenses]
+Status: Selected (Rank 4)
+Signal Strength: Medium | Business Relevance: High | Incremental Fit: Medium | Collinearity Risk: Low/Medium
+Reason: Selected because it reflects internal commercial activity and sales push related to order generation.
+Statistical reason: The driver showed Medium signal strength, Medium incremental fit, and Low/Medium collinearity risk during selection.
+Business reason: Selected because it reflects internal commercial activity and sales push related to order generation.
+Outperformed by: None
+Comparison: It helps capture company-specific demand-generation effects.
+Response: Yes. Operational Sales Expenses was evaluated and selected for ELSP. It was retained because it had a strong business linkage, useful statistical signal, and added incremental explanatory value beyond broader macro indicators. In simple terms, it helped explain ELSP orders better than more generic indicators.
+
+[Driver: Iron & Steel PPI]
+Status: Selected (Rank 5)
+Signal Strength: Medium | Business Relevance: Medium | Incremental Fit: Medium | Collinearity Risk: Low/Medium
+Reason: Selected because industrial input-price movements explain timing and cost-linked order behavior.
+Statistical reason: The driver showed Medium signal strength, Medium incremental fit, and Low/Medium collinearity risk during selection.
+Business reason: Selected because industrial input-price movements explain timing and cost-linked order behavior.
+Outperformed by: None
+Comparison: It complements copper price by capturing a broader industrial material-cost signal.
+Response: Yes. Iron & Steel PPI was evaluated and selected for ELSP. It was retained because it had a strong business linkage, useful statistical signal, and added incremental explanatory value beyond broader macro indicators. In simple terms, it helped explain ELSP orders better than more generic indicators.
+
+[Driver: US Computer Products]
+Status: Selected (Rank 6)
+Signal Strength: Medium | Business Relevance: Medium | Incremental Fit: Medium | Collinearity Risk: Low/Medium
+Reason: Selected because technology-sector activity links to electronics, automation and data-center adjacency.
+Statistical reason: The driver showed Medium signal strength, Medium incremental fit, and Low/Medium collinearity risk during selection.
+Business reason: Selected because technology-sector activity links to electronics, automation and data-center adjacency.
+Outperformed by: None
+Comparison: It captured a useful niche signal after larger infrastructure drivers were included.
+Response: Yes. US Computer Products was evaluated and selected for ELSP. It was retained because it had a strong business linkage, useful statistical signal, and added incremental explanatory value beyond broader macro indicators. In simple terms, it helped explain ELSP orders better than more generic indicators.
+
+[Driver: Copper Price]
+Status: Selected (Rank 7)
+Signal Strength: Medium | Business Relevance: Medium | Incremental Fit: Medium | Collinearity Risk: Low/Medium
+Reason: Selected because copper is a key commodity signal for electrification cost and order timing.
+Statistical reason: The driver showed Medium signal strength, Medium incremental fit, and Low/Medium collinearity risk during selection.
+Business reason: Selected because copper is a key commodity signal for electrification cost and order timing.
+Outperformed by: None
+Comparison: It adds cost-environment context that demand-only indicators miss.
+Response: Yes. Copper Price was evaluated and selected for ELSP. It was retained because it had a strong business linkage, useful statistical signal, and added incremental explanatory value beyond broader macro indicators. In simple terms, it helped explain ELSP orders better than more generic indicators.
+
+[Driver: US GDP]
+Status: Evaluated but not selected (Rank 8)
+Signal Strength: Medium | Business Relevance: Medium | Incremental Fit: Low | Collinearity Risk: Low
+Reason: GDP was directionally relevant but too broad; after accounting for sector-specific indicators, it added limited incremental explanatory power.
+Statistical reason: It was evaluated, but its incremental explanatory power was low after stronger selected drivers were considered.
+Business reason: US GDP is relevant, but Data Center / Hyperscaler is closer to the actual demand creation mechanism for ELSP.
+Outperformed by: Data Center / Hyperscaler
+Comparison: Data Center outperformed GDP because it is closer to the actual demand mechanism for electrification orders and captured sharper recent growth.
+Response: Yes. US GDP was evaluated for ELSP, but it was not selected because GDP was directionally relevant but too broad; after accounting for sector-specific indicators, it added limited incremental explanatory power. The selected driver(s) such as Data Center / Hyperscaler provided a stronger or more direct explanation of ELSP order movement.
+
+[Driver: General Industrial Production]
+Status: Evaluated but not selected (Rank 9)
+Signal Strength: Medium | Business Relevance: Medium | Incremental Fit: Low | Collinearity Risk: Medium
+Reason: It overlapped with broader economic activity and did not outperform selected sector-specific drivers.
+Statistical reason: It was evaluated, but its incremental explanatory power was low after stronger selected drivers were considered.
+Business reason: General Industrial Production is relevant, but Electrical Equipment PPI and US Computer Products are closer to the actual demand creation mechanism for ELSP.
+Outperformed by: Electrical Equipment PPI; US Computer Products
+Comparison: Sector-specific drivers offered a closer read of ELSP demand than broad industrial activity.
+Response: Yes. General Industrial Production was evaluated for ELSP, but it was not selected because it overlapped with broader economic activity and did not outperform selected sector-specific drivers. The selected driver(s) such as Electrical Equipment PPI and US Computer Products provided a stronger or more direct explanation of ELSP order movement.
+
+[Driver: Manufacturing PMI]
+Status: Evaluated but not selected (Rank 10)
+Signal Strength: Medium | Business Relevance: Medium | Incremental Fit: Low | Collinearity Risk: Medium
+Reason: It showed cyclical relevance but the monthly signal was less stable and overlapped with selected industrial indicators.
+Statistical reason: It was evaluated, but its incremental explanatory power was low after stronger selected drivers were considered.
+Business reason: Manufacturing PMI is relevant, but Iron & Steel PPI and Electrical Equipment PPI are closer to the actual demand creation mechanism for ELSP.
+Outperformed by: Iron & Steel PPI; Electrical Equipment PPI
+Comparison: Selected price/activity indicators provided more stable incremental signal.
+Response: Yes. Manufacturing PMI was evaluated for ELSP, but it was not selected because it showed cyclical relevance but the monthly signal was less stable and overlapped with selected industrial indicators. The selected driver(s) such as Iron & Steel PPI and Electrical Equipment PPI provided a stronger or more direct explanation of ELSP order movement.
+
+[Driver: Consumer Confidence Index]
+Status: Evaluated but not selected (Rank 11)
+Signal Strength: Low | Business Relevance: Low | Incremental Fit: Low | Collinearity Risk: Low
+Reason: It had weak business linkage to ELSP orders, which are more influenced by electrification, utilities, and industrial investment.
+Statistical reason: It was evaluated, but its incremental explanatory power was low after stronger selected drivers were considered.
+Business reason: Consumer Confidence Index is relevant, but US Utility Capex and Data Center / Hyperscaler are closer to the actual demand creation mechanism for ELSP.
+Outperformed by: US Utility Capex; Data Center / Hyperscaler
+Comparison: Utility capex and data-center activity were closer to ELSP end-market demand.
+Response: Yes. Consumer Confidence Index was evaluated for ELSP, but it was not selected because it had weak business linkage to ELSP orders, which are more influenced by electrification, utilities, and industrial investment. The selected driver(s) such as US Utility Capex and Data Center / Hyperscaler provided a stronger or more direct explanation of ELSP order movement.
+
+[Driver: Residential Housing Starts]
+Status: Evaluated but not selected (Rank 12)
+Signal Strength: Low | Business Relevance: Medium | Incremental Fit: Low | Collinearity Risk: Low
+Reason: It was not sufficiently aligned with ELSP's main demand pattern.
+Statistical reason: It was evaluated, but its incremental explanatory power was low after stronger selected drivers were considered.
+Business reason: Residential Housing Starts is relevant, but construction/utility-related selected indicators are closer to the actual demand creation mechanism for ELSP.
+Outperformed by: Construction/utility-related selected indicators
+Comparison: ELSP selected drivers captured industrial and electrification demand better than housing starts.
+Response: Yes. Residential Housing Starts was evaluated for ELSP, but it was not selected because it was not sufficiently aligned with ELSP's main demand pattern. The selected driver(s) such as utility and construction-linked indicators provided a stronger or more direct explanation of ELSP order movement.
+
+[Driver: Crude Oil Price]
+Status: Evaluated but not selected (Rank 13)
+Signal Strength: Low | Business Relevance: Low | Incremental Fit: Low | Collinearity Risk: Medium
+Reason: The direction was not stable and it did not add clear explanatory value after commodity and industrial-price drivers were included.
+Statistical reason: It was evaluated, but its incremental explanatory power was low after stronger selected drivers were considered.
+Business reason: Crude Oil Price is relevant, but Copper Price and Iron & Steel PPI are closer to the actual demand creation mechanism for ELSP.
+Outperformed by: Copper Price; Iron & Steel PPI
+Comparison: Copper and steel were more relevant cost signals for electrical equipment.
+Response: Yes. Crude Oil Price was evaluated for ELSP, but it was not selected because the direction was not stable and it did not add clear explanatory value after commodity and industrial-price drivers were included. The selected driver(s) such as Copper Price and Iron & Steel PPI provided a stronger or more direct explanation of ELSP order movement.
+
+[Driver: CPI All Items]
+Status: Evaluated but not selected (Rank 14)
+Signal Strength: Medium | Business Relevance: Low | Incremental Fit: Low | Collinearity Risk: High
+Reason: It overlapped with more specific price indicators and was less tied to electrical-equipment orders.
+Statistical reason: It was evaluated, but its incremental explanatory power was low after stronger selected drivers were considered.
+Business reason: CPI All Items is relevant, but Electrical Equipment PPI is closer to the actual demand creation mechanism for ELSP.
+Outperformed by: Electrical Equipment PPI
+Comparison: Electrical Equipment PPI captured sector-specific price movement better than broad CPI.
+Response: Yes. CPI All Items was evaluated for ELSP, but it was not selected because it overlapped with more specific price indicators and was less tied to electrical-equipment orders. The selected driver(s) such as Electrical Equipment PPI provided a stronger or more direct explanation of ELSP order movement.
+
+[Driver: Interest Rate]
+Status: Evaluated but not selected (Rank 15)
+Signal Strength: Low | Business Relevance: Medium | Incremental Fit: Low | Collinearity Risk: Medium
+Reason: It was too indirect and weaker than capex-led indicators for explaining ELSP orders.
+Statistical reason: It was evaluated, but its incremental explanatory power was low after stronger selected drivers were considered.
+Business reason: Interest Rate is relevant, but US Utility Capex is closer to the actual demand creation mechanism for ELSP.
+Outperformed by: US Utility Capex
+Comparison: Utility capex captured realized investment behavior more directly than interest rates.
+Response: Yes. Interest Rate was evaluated for ELSP, but it was not selected because it was too indirect and weaker than capex-led indicators for explaining ELSP orders. The selected driver(s) such as US Utility Capex provided a stronger or more direct explanation of ELSP order movement.
+
+[Driver: Exchange Rate Index]
+Status: Evaluated but not selected (Rank 16)
+Signal Strength: Low | Business Relevance: Low | Incremental Fit: Low | Collinearity Risk: Low
+Reason: It showed limited relevance to ELSP order patterns and did not improve model explanation.
+Statistical reason: It was evaluated, but its incremental explanatory power was low after stronger selected drivers were considered.
+Business reason: Exchange Rate Index is relevant, but Data Center / Hyperscaler and US Utility Capex are closer to the actual demand creation mechanism for ELSP.
+Outperformed by: Data Center / Hyperscaler; US Utility Capex
+Comparison: Demand-side indicators outperformed currency movement for ELSP.
+Response: Yes. Exchange Rate Index was evaluated for ELSP, but it was not selected because it showed limited relevance to ELSP order patterns and did not improve model explanation. The selected driver(s) such as Data Center / Hyperscaler and US Utility Capex provided a stronger or more direct explanation of ELSP order movement.
+
+==============================================================
+DIVISION: ELSB
+==============================================================
+
+[Driver: US Utility Capex]
+Status: Selected (Rank 1)
+Signal Strength: Very High | Business Relevance: Very High | Incremental Fit: High | Collinearity Risk: Low/Medium
+Reason: Selected because utility and power-distribution investment strongly aligns with ELSB order cycles.
+Statistical reason: The driver showed Very High signal strength, High incremental fit, and Low/Medium collinearity risk during selection.
+Business reason: Selected because utility and power-distribution investment strongly aligns with ELSB order cycles.
+Outperformed by: None
+Comparison: It was more directly linked to ELSB demand than general macro indicators.
+Response: Yes. US Utility Capex was evaluated and selected for ELSB. It was retained because it had a strong business linkage, useful statistical signal, and added incremental explanatory value beyond broader macro indicators. In simple terms, it helped explain ELSB orders better than more generic indicators.
+
+[Driver: Data Center / Hyperscaler]
+Status: Selected (Rank 2)
+Signal Strength: High | Business Relevance: Very High | Incremental Fit: High | Collinearity Risk: Low/Medium
+Reason: Selected because data-center buildout drives demand for low-voltage and electrification infrastructure.
+Statistical reason: The driver showed High signal strength, High incremental fit, and Low/Medium collinearity risk during selection.
+Business reason: Selected because data-center buildout drives demand for low-voltage and electrification infrastructure.
+Outperformed by: None
+Comparison: It captured a sharper growth pocket than broad GDP or industrial production.
+Response: Yes. Data Center / Hyperscaler was evaluated and selected for ELSB. It was retained because it had a strong business linkage, useful statistical signal, and added incremental explanatory value beyond broader macro indicators. In simple terms, it helped explain ELSB orders better than more generic indicators.
+
+[Driver: Construction Spending Index]
+Status: Selected (Rank 3)
+Signal Strength: High | Business Relevance: High | Incremental Fit: Medium | Collinearity Risk: Low/Medium
+Reason: Selected because construction activity is closely linked to building electrification demand.
+Statistical reason: The driver showed High signal strength, Medium incremental fit, and Low/Medium collinearity risk during selection.
+Business reason: Selected because construction activity is closely linked to building electrification demand.
+Outperformed by: None
+Comparison: It provided better end-market specificity than consumer or broad macro indicators.
+Response: Yes. Construction Spending Index was evaluated and selected for ELSB. It was retained because it had a strong business linkage, useful statistical signal, and added incremental explanatory value beyond broader macro indicators. In simple terms, it helped explain ELSB orders better than more generic indicators.
+
+[Driver: Electrical Equipment PPI]
+Status: Selected (Rank 4)
+Signal Strength: Medium | Business Relevance: High | Incremental Fit: Medium | Collinearity Risk: Low/Medium
+Reason: Selected because sector price movement provided a useful electrical-equipment demand and pricing signal.
+Statistical reason: The driver showed Medium signal strength, Medium incremental fit, and Low/Medium collinearity risk during selection.
+Business reason: Selected because sector price movement provided a useful electrical-equipment demand and pricing signal.
+Outperformed by: None
+Comparison: It was more relevant than generic inflation indices.
+Response: Yes. Electrical Equipment PPI was evaluated and selected for ELSB. It was retained because it had a strong business linkage, useful statistical signal, and added incremental explanatory value beyond broader macro indicators. In simple terms, it helped explain ELSB orders better than more generic indicators.
+
+[Driver: Europe Producer Price Index]
+Status: Selected (Rank 5)
+Signal Strength: Medium | Business Relevance: Medium | Incremental Fit: Medium | Collinearity Risk: Low/Medium
+Reason: Selected because it captured relevant European industrial price and activity conditions.
+Statistical reason: The driver showed Medium signal strength, Medium incremental fit, and Low/Medium collinearity risk during selection.
+Business reason: Selected because it captured relevant European industrial price and activity conditions.
+Outperformed by: None
+Comparison: It added regional signal beyond US-only indicators.
+Response: Yes. Europe Producer Price Index was evaluated and selected for ELSB. It was retained because it had a strong business linkage, useful statistical signal, and added incremental explanatory value beyond broader macro indicators. In simple terms, it helped explain ELSB orders better than more generic indicators.
+
+[Driver: China IIP]
+Status: Selected (Rank 6)
+Signal Strength: Medium | Business Relevance: Medium | Incremental Fit: Medium | Collinearity Risk: Low/Medium
+Reason: Selected because China industrial activity provided a relevant external demand proxy.
+Statistical reason: The driver showed Medium signal strength, Medium incremental fit, and Low/Medium collinearity risk during selection.
+Business reason: Selected because China industrial activity provided a relevant external demand proxy.
+Outperformed by: None
+Comparison: It explained some non-US industrial demand movement not captured by local indicators.
+Response: Yes. China IIP was evaluated and selected for ELSB. It was retained because it had a strong business linkage, useful statistical signal, and added incremental explanatory value beyond broader macro indicators. In simple terms, it helped explain ELSB orders better than more generic indicators.
+
+[Driver: Copper Price]
+Status: Selected (Rank 7)
+Signal Strength: Medium | Business Relevance: Medium | Incremental Fit: Medium | Collinearity Risk: Low/Medium
+Reason: Selected because commodity price movement can influence order timing and pricing behavior.
+Statistical reason: The driver showed Medium signal strength, Medium incremental fit, and Low/Medium collinearity risk during selection.
+Business reason: Selected because commodity price movement can influence order timing and pricing behavior.
+Outperformed by: None
+Comparison: It added cost-side context to demand-side drivers.
+Response: Yes. Copper Price was evaluated and selected for ELSB. It was retained because it had a strong business linkage, useful statistical signal, and added incremental explanatory value beyond broader macro indicators. In simple terms, it helped explain ELSB orders better than more generic indicators.
+
+[Driver: US GDP]
+Status: Evaluated but not selected (Rank 8)
+Signal Strength: Medium | Business Relevance: Medium | Incremental Fit: Low | Collinearity Risk: Low
+Reason: GDP was directionally relevant but broad; ELSB order movements were better explained by utility capex, data-center demand, and construction indicators.
+Statistical reason: It was evaluated, but its incremental explanatory power was low after stronger selected drivers were considered.
+Business reason: US GDP is relevant, but US Utility Capex and Data Center / Hyperscaler are closer to the actual demand creation mechanism for ELSB.
+Outperformed by: US Utility Capex; Data Center / Hyperscaler
+Comparison: Utility Capex and Data Center were closer to low-voltage/electrification demand than GDP.
+Response: Yes. US GDP was evaluated for ELSB, but it was not selected because GDP was directionally relevant but broad; ELSB order movements were better explained by utility capex, data-center demand, and construction indicators. The selected driver(s) such as US Utility Capex and Data Center / Hyperscaler provided a stronger or more direct explanation of ELSB order movement.
+
+[Driver: Consumer Confidence Index]
+Status: Evaluated but not selected (Rank 9)
+Signal Strength: Low | Business Relevance: Low | Incremental Fit: Low | Collinearity Risk: Low
+Reason: Consumer sentiment did not represent the core industrial and building-electrification drivers for ELSB.
+Statistical reason: It was evaluated, but its incremental explanatory power was low after stronger selected drivers were considered.
+Business reason: Consumer Confidence Index is relevant, but Construction Spending Index and Europe Producer Price Index are closer to the actual demand creation mechanism for ELSB.
+Outperformed by: Construction Spending Index; Europe Producer Price Index
+Comparison: Construction and producer-price indicators were more aligned to ELSB end-market demand.
+Response: Yes. Consumer Confidence Index was evaluated for ELSB, but it was not selected because consumer sentiment did not represent the core industrial and building-electrification drivers for ELSB. The selected driver(s) such as Construction Spending Index and Europe Producer Price Index provided a stronger or more direct explanation of ELSB order movement.
+
+[Driver: Retail Sales Index]
+Status: Evaluated but not selected (Rank 10)
+Signal Strength: Low | Business Relevance: Low | Incremental Fit: Low | Collinearity Risk: Low
+Reason: It had weak linkage to ELSB orders and did not add incremental value after construction and utility indicators.
+Statistical reason: It was evaluated, but its incremental explanatory power was low after stronger selected drivers were considered.
+Business reason: Retail Sales Index is relevant, but Construction Spending Index is closer to the actual demand creation mechanism for ELSB.
+Outperformed by: Construction Spending Index
+Comparison: Construction spending was closer to building and electrification demand.
+Response: Yes. Retail Sales Index was evaluated for ELSB, but it was not selected because it had weak linkage to ELSB orders and did not add incremental value after construction and utility indicators. The selected driver(s) such as Construction Spending Index provided a stronger or more direct explanation of ELSB order movement.
+
+[Driver: Residential Building Permits]
+Status: Evaluated but not selected (Rank 11)
+Signal Strength: Medium | Business Relevance: Medium | Incremental Fit: Low | Collinearity Risk: Medium
+Reason: It was directionally relevant but overlapped with the broader construction spending indicator.
+Statistical reason: It was evaluated, but its incremental explanatory power was low after stronger selected drivers were considered.
+Business reason: Residential Building Permits is relevant, but Construction Spending Index is closer to the actual demand creation mechanism for ELSB.
+Outperformed by: Construction Spending Index
+Comparison: Construction Spending Index summarized the building-demand signal more effectively.
+Response: Yes. Residential Building Permits was evaluated for ELSB, but it was not selected because it was directionally relevant but overlapped with the broader construction spending indicator. The selected driver(s) such as Construction Spending Index provided a stronger or more direct explanation of ELSB order movement.
+
+[Driver: CPI All Items]
+Status: Evaluated but not selected (Rank 12)
+Signal Strength: Medium | Business Relevance: Low | Incremental Fit: Low | Collinearity Risk: High
+Reason: It was too broad and highly overlapping with more specific price indicators.
+Statistical reason: It was evaluated, but its incremental explanatory power was low after stronger selected drivers were considered.
+Business reason: CPI All Items is relevant, but Electrical Equipment PPI and Europe Producer Price Index are closer to the actual demand creation mechanism for ELSB.
+Outperformed by: Electrical Equipment PPI; Europe Producer Price Index
+Comparison: Sector PPI indicators captured the relevant price environment more directly.
+Response: Yes. CPI All Items was evaluated for ELSB, but it was not selected because it was too broad and highly overlapping with more specific price indicators. The selected driver(s) such as Electrical Equipment PPI and Europe Producer Price Index provided a stronger or more direct explanation of ELSB order movement.
+
+[Driver: Manufacturing PMI]
+Status: Evaluated but not selected (Rank 13)
+Signal Strength: Medium | Business Relevance: Medium | Incremental Fit: Low | Collinearity Risk: Medium
+Reason: It was useful directionally but weaker than China IIP and sector price indicators in the candidate comparison.
+Statistical reason: It was evaluated, but its incremental explanatory power was low after stronger selected drivers were considered.
+Business reason: Manufacturing PMI is relevant, but China IIP and Electrical Equipment PPI are closer to the actual demand creation mechanism for ELSB.
+Outperformed by: China IIP; Electrical Equipment PPI
+Comparison: China IIP and PPI variables provided stronger regional/sector signal.
+Response: Yes. Manufacturing PMI was evaluated for ELSB, but it was not selected because it was useful directionally but weaker than China IIP and sector price indicators in the candidate comparison. The selected driver(s) such as China IIP and Electrical Equipment PPI provided a stronger or more direct explanation of ELSB order movement.
+
+[Driver: Interest Rate]
+Status: Evaluated but not selected (Rank 14)
+Signal Strength: Low | Business Relevance: Medium | Incremental Fit: Low | Collinearity Risk: Low
+Reason: It influenced investment indirectly but did not explain ELSB order movement as well as realized capex indicators.
+Statistical reason: It was evaluated, but its incremental explanatory power was low after stronger selected drivers were considered.
+Business reason: Interest Rate is relevant, but US Utility Capex is closer to the actual demand creation mechanism for ELSB.
+Outperformed by: US Utility Capex
+Comparison: Utility capex represented actual investment flow better.
+Response: Yes. Interest Rate was evaluated for ELSB, but it was not selected because it influenced investment indirectly but did not explain ELSB order movement as well as realized capex indicators. The selected driver(s) such as US Utility Capex provided a stronger or more direct explanation of ELSB order movement.
+
+[Driver: Exchange Rate Index]
+Status: Evaluated but not selected (Rank 15)
+Signal Strength: Low | Business Relevance: Low | Incremental Fit: Low | Collinearity Risk: Low
+Reason: It did not have enough explanatory strength after regional demand and price drivers were considered.
+Statistical reason: It was evaluated, but its incremental explanatory power was low after stronger selected drivers were considered.
+Business reason: Exchange Rate Index is relevant, but Europe Producer Price Index and China IIP are closer to the actual demand creation mechanism for ELSB.
+Outperformed by: Europe Producer Price Index; China IIP
+Comparison: Regional activity and price indicators were more relevant.
+Response: Yes. Exchange Rate Index was evaluated for ELSB, but it was not selected because it did not have enough explanatory strength after regional demand and price drivers were considered. The selected driver(s) such as Europe Producer Price Index and China IIP provided a stronger or more direct explanation of ELSB order movement.
+
+[Driver: Crude Oil Price]
+Status: Evaluated but not selected (Rank 16)
+Signal Strength: Low | Business Relevance: Low | Incremental Fit: Low | Collinearity Risk: Medium
+Reason: It was not closely connected to ELSB demand and overlapped with broader commodity-cost signals.
+Statistical reason: It was evaluated, but its incremental explanatory power was low after stronger selected drivers were considered.
+Business reason: Crude Oil Price is relevant, but Copper Price is closer to the actual demand creation mechanism for ELSB.
+Outperformed by: Copper Price
+Comparison: Copper Price was a more relevant commodity proxy for electrification equipment.
+Response: Yes. Crude Oil Price was evaluated for ELSB, but it was not selected because it was not closely connected to ELSB demand and overlapped with broader commodity-cost signals. The selected driver(s) such as Copper Price provided a stronger or more direct explanation of ELSB order movement.
+
+==============================================================
+DIVISION: ELDS
+==============================================================
+
+[Driver: Grid Investment Index]
+Status: Selected (Rank 1)
+Signal Strength: Very High | Business Relevance: Very High | Incremental Fit: High | Collinearity Risk: Low/Medium
+Reason: Selected because it is the most direct proxy for distribution-system and grid demand.
+Statistical reason: The driver showed Very High signal strength, High incremental fit, and Low/Medium collinearity risk during selection.
+Business reason: Selected because it is the most direct proxy for distribution-system and grid demand.
+Outperformed by: None
+Comparison: It outperformed broad indicators because it maps directly to ELDS end-market investment.
+Response: Yes. Grid Investment Index was evaluated and selected for ELDS. It was retained because it had a strong business linkage, useful statistical signal, and added incremental explanatory value beyond broader macro indicators. In simple terms, it helped explain ELDS orders better than more generic indicators.
+
+[Driver: US Utility Capex]
+Status: Selected (Rank 2)
+Signal Strength: High | Business Relevance: Very High | Incremental Fit: High | Collinearity Risk: Low/Medium
+Reason: Selected because utility capital expenditure strongly reflects grid and distribution infrastructure cycles.
+Statistical reason: The driver showed High signal strength, High incremental fit, and Low/Medium collinearity risk during selection.
+Business reason: Selected because utility capital expenditure strongly reflects grid and distribution infrastructure cycles.
+Outperformed by: None
+Comparison: It added a direct infrastructure signal beyond macroeconomic growth.
+Response: Yes. US Utility Capex was evaluated and selected for ELDS. It was retained because it had a strong business linkage, useful statistical signal, and added incremental explanatory value beyond broader macro indicators. In simple terms, it helped explain ELDS orders better than more generic indicators.
+
+[Driver: Data Center / Hyperscaler]
+Status: Selected (Rank 3)
+Signal Strength: High | Business Relevance: High | Incremental Fit: High | Collinearity Risk: Low/Medium
+Reason: Selected because data-center load growth creates demand for power-distribution and grid capacity.
+Statistical reason: The driver showed High signal strength, High incremental fit, and Low/Medium collinearity risk during selection.
+Business reason: Selected because data-center load growth creates demand for power-distribution and grid capacity.
+Outperformed by: None
+Comparison: It captured emerging demand that broad GDP could not isolate.
+Response: Yes. Data Center / Hyperscaler was evaluated and selected for ELDS. It was retained because it had a strong business linkage, useful statistical signal, and added incremental explanatory value beyond broader macro indicators. In simple terms, it helped explain ELDS orders better than more generic indicators.
+
+[Driver: Renewable Energy Capacity Additions]
+Status: Selected (Rank 4)
+Signal Strength: High | Business Relevance: High | Incremental Fit: Medium | Collinearity Risk: Low/Medium
+Reason: Selected because renewable additions create grid integration and distribution-system needs.
+Statistical reason: The driver showed High signal strength, Medium incremental fit, and Low/Medium collinearity risk during selection.
+Business reason: Selected because renewable additions create grid integration and distribution-system needs.
+Outperformed by: None
+Comparison: It explained demand linked to energy-transition infrastructure.
+Response: Yes. Renewable Energy Capacity Additions was evaluated and selected for ELDS. It was retained because it had a strong business linkage, useful statistical signal, and added incremental explanatory value beyond broader macro indicators. In simple terms, it helped explain ELDS orders better than more generic indicators.
+
+[Driver: Transformer Raw Material Index]
+Status: Selected (Rank 5)
+Signal Strength: Medium | Business Relevance: High | Incremental Fit: Medium | Collinearity Risk: Low/Medium
+Reason: Selected because material-cost movements influence transformer and distribution-equipment order timing.
+Statistical reason: The driver showed Medium signal strength, Medium incremental fit, and Low/Medium collinearity risk during selection.
+Business reason: Selected because material-cost movements influence transformer and distribution-equipment order timing.
+Outperformed by: None
+Comparison: It added a cost and supply-environment signal.
+Response: Yes. Transformer Raw Material Index was evaluated and selected for ELDS. It was retained because it had a strong business linkage, useful statistical signal, and added incremental explanatory value beyond broader macro indicators. In simple terms, it helped explain ELDS orders better than more generic indicators.
+
+[Driver: Industrial Automation Capex]
+Status: Selected (Rank 6)
+Signal Strength: Medium | Business Relevance: Medium | Incremental Fit: Medium | Collinearity Risk: Low/Medium
+Reason: Selected because industrial capex is linked to electrical distribution and automation demand.
+Statistical reason: The driver showed Medium signal strength, Medium incremental fit, and Low/Medium collinearity risk during selection.
+Business reason: Selected because industrial capex is linked to electrical distribution and automation demand.
+Outperformed by: None
+Comparison: It added industrial end-market context.
+Response: Yes. Industrial Automation Capex was evaluated and selected for ELDS. It was retained because it had a strong business linkage, useful statistical signal, and added incremental explanatory value beyond broader macro indicators. In simple terms, it helped explain ELDS orders better than more generic indicators.
+
+[Driver: Copper Price]
+Status: Selected (Rank 7)
+Signal Strength: Medium | Business Relevance: Medium | Incremental Fit: Medium | Collinearity Risk: Low/Medium
+Reason: Selected because copper-price movement affects electrification costs and customer order timing.
+Statistical reason: The driver showed Medium signal strength, Medium incremental fit, and Low/Medium collinearity risk during selection.
+Business reason: Selected because copper-price movement affects electrification costs and customer order timing.
+Outperformed by: None
+Comparison: It complements infrastructure and grid-demand indicators.
+Response: Yes. Copper Price was evaluated and selected for ELDS. It was retained because it had a strong business linkage, useful statistical signal, and added incremental explanatory value beyond broader macro indicators. In simple terms, it helped explain ELDS orders better than more generic indicators.
+
+[Driver: US GDP]
+Status: Evaluated but not selected (Rank 8)
+Signal Strength: Medium | Business Relevance: Medium | Incremental Fit: Low | Collinearity Risk: Low
+Reason: GDP captured broad economic momentum but did not explain grid/distribution-system demand as well as grid investment and utility capex.
+Statistical reason: It was evaluated, but its incremental explanatory power was low after stronger selected drivers were considered.
+Business reason: US GDP is relevant, but Grid Investment Index and US Utility Capex are closer to the actual demand creation mechanism for ELDS.
+Outperformed by: Grid Investment Index; US Utility Capex
+Comparison: Grid Investment and Utility Capex were more directly linked to distribution-system orders.
+Response: Yes. US GDP was evaluated for ELDS, but it was not selected because GDP captured broad economic momentum but did not explain grid/distribution-system demand as well as grid investment and utility capex. The selected driver(s) such as Grid Investment Index and US Utility Capex provided a stronger or more direct explanation of ELDS order movement.
+
+[Driver: General Industrial Production]
+Status: Evaluated but not selected (Rank 9)
+Signal Strength: Medium | Business Relevance: Medium | Incremental Fit: Low | Collinearity Risk: Medium
+Reason: It provided broad industrial context but did not outperform grid-specific and energy-transition indicators.
+Statistical reason: It was evaluated, but its incremental explanatory power was low after stronger selected drivers were considered.
+Business reason: General Industrial Production is relevant, but Grid Investment Index and Renewable Energy Capacity Additions are closer to the actual demand creation mechanism for ELDS.
+Outperformed by: Grid Investment Index; Renewable Energy Capacity Additions
+Comparison: Grid and renewable indicators matched ELDS demand mechanisms better.
+Response: Yes. General Industrial Production was evaluated for ELDS, but it was not selected because it provided broad industrial context but did not outperform grid-specific and energy-transition indicators. The selected driver(s) such as Grid Investment Index and Renewable Energy Capacity Additions provided a stronger or more direct explanation of ELDS order movement.
+
+[Driver: Construction Spending Index]
+Status: Evaluated but not selected (Rank 10)
+Signal Strength: Medium | Business Relevance: Medium | Incremental Fit: Low | Collinearity Risk: Medium
+Reason: It had some relevance but was less direct than grid investment and utility capex for ELDS.
+Statistical reason: It was evaluated, but its incremental explanatory power was low after stronger selected drivers were considered.
+Business reason: Construction Spending Index is relevant, but Grid Investment Index and US Utility Capex are closer to the actual demand creation mechanism for ELDS.
+Outperformed by: Grid Investment Index; US Utility Capex
+Comparison: Infrastructure-specific indicators provided a clearer signal.
+Response: Yes. Construction Spending Index was evaluated for ELDS, but it was not selected because it had some relevance but was less direct than grid investment and utility capex for ELDS. The selected driver(s) such as Grid Investment Index and US Utility Capex provided a stronger or more direct explanation of ELDS order movement.
+
+[Driver: Manufacturing PMI]
+Status: Evaluated but not selected (Rank 11)
+Signal Strength: Medium | Business Relevance: Medium | Incremental Fit: Low | Collinearity Risk: Medium
+Reason: It was cyclical but the incremental signal was weaker once grid and utility indicators were included.
+Statistical reason: It was evaluated, but its incremental explanatory power was low after stronger selected drivers were considered.
+Business reason: Manufacturing PMI is relevant, but Grid Investment Index and Industrial Automation Capex are closer to the actual demand creation mechanism for ELDS.
+Outperformed by: Grid Investment Index; Industrial Automation Capex
+Comparison: Selected drivers were closer to customer investment decisions.
+Response: Yes. Manufacturing PMI was evaluated for ELDS, but it was not selected because it was cyclical but the incremental signal was weaker once grid and utility indicators were included. The selected driver(s) such as Grid Investment Index and Industrial Automation Capex provided a stronger or more direct explanation of ELDS order movement.
+
+[Driver: Consumer Confidence Index]
+Status: Evaluated but not selected (Rank 12)
+Signal Strength: Low | Business Relevance: Low | Incremental Fit: Low | Collinearity Risk: Low
+Reason: It had weak linkage to distribution systems and infrastructure orders.
+Statistical reason: It was evaluated, but its incremental explanatory power was low after stronger selected drivers were considered.
+Business reason: Consumer Confidence Index is relevant, but Grid Investment Index and Data Center / Hyperscaler are closer to the actual demand creation mechanism for ELDS.
+Outperformed by: Grid Investment Index; Data Center / Hyperscaler
+Comparison: Infrastructure and data-center drivers were much closer to ELDS demand.
+Response: Yes. Consumer Confidence Index was evaluated for ELDS, but it was not selected because it had weak linkage to distribution systems and infrastructure orders. The selected driver(s) such as Grid Investment Index and Data Center / Hyperscaler provided a stronger or more direct explanation of ELDS order movement.
+
+[Driver: Residential Housing Starts]
+Status: Evaluated but not selected (Rank 13)
+Signal Strength: Low | Business Relevance: Medium | Incremental Fit: Low | Collinearity Risk: Low
+Reason: It did not explain ELDS order movement as well as utility and grid investment signals.
+Statistical reason: It was evaluated, but its incremental explanatory power was low after stronger selected drivers were considered.
+Business reason: Residential Housing Starts is relevant, but US Utility Capex and Grid Investment Index are closer to the actual demand creation mechanism for ELDS.
+Outperformed by: US Utility Capex; Grid Investment Index
+Comparison: Grid and utility capex captured the relevant end-market better.
+Response: Yes. Residential Housing Starts was evaluated for ELDS, but it was not selected because it did not explain ELDS order movement as well as utility and grid investment signals. The selected driver(s) such as US Utility Capex and Grid Investment Index provided a stronger or more direct explanation of ELDS order movement.
+
+[Driver: CPI All Items]
+Status: Evaluated but not selected (Rank 14)
+Signal Strength: Medium | Business Relevance: Low | Incremental Fit: Low | Collinearity Risk: High
+Reason: It was too broad and overlapped with more relevant raw-material and sector-cost indicators.
+Statistical reason: It was evaluated, but its incremental explanatory power was low after stronger selected drivers were considered.
+Business reason: CPI All Items is relevant, but Transformer Raw Material Index and Copper Price are closer to the actual demand creation mechanism for ELDS.
+Outperformed by: Transformer Raw Material Index; Copper Price
+Comparison: Raw-material signals were more aligned to ELDS cost and order timing.
+Response: Yes. CPI All Items was evaluated for ELDS, but it was not selected because it was too broad and overlapped with more relevant raw-material and sector-cost indicators. The selected driver(s) such as Transformer Raw Material Index and Copper Price provided a stronger or more direct explanation of ELDS order movement.
+
+[Driver: Interest Rate]
+Status: Evaluated but not selected (Rank 15)
+Signal Strength: Low | Business Relevance: Medium | Incremental Fit: Low | Collinearity Risk: Medium
+Reason: It was an indirect investment proxy and did not add enough incremental explanatory power.
+Statistical reason: It was evaluated, but its incremental explanatory power was low after stronger selected drivers were considered.
+Business reason: Interest Rate is relevant, but US Utility Capex is closer to the actual demand creation mechanism for ELDS.
+Outperformed by: US Utility Capex
+Comparison: Actual capex was a stronger realized-investment signal.
+Response: Yes. Interest Rate was evaluated for ELDS, but it was not selected because it was an indirect investment proxy and did not add enough incremental explanatory power. The selected driver(s) such as US Utility Capex provided a stronger or more direct explanation of ELDS order movement.
+
+[Driver: Exchange Rate Index]
+Status: Evaluated but not selected (Rank 16)
+Signal Strength: Low | Business Relevance: Low | Incremental Fit: Low | Collinearity Risk: Low
+Reason: It had limited explanatory value for the ELDS order series.
+Statistical reason: It was evaluated, but its incremental explanatory power was low after stronger selected drivers were considered.
+Business reason: Exchange Rate Index is relevant, but Grid Investment Index and Data Center / Hyperscaler are closer to the actual demand creation mechanism for ELDS.
+Outperformed by: Grid Investment Index; Data Center / Hyperscaler
+Comparison: Demand and infrastructure variables outperformed currency effects.
+Response: Yes. Exchange Rate Index was evaluated for ELDS, but it was not selected because it had limited explanatory value for the ELDS order series. The selected driver(s) such as Grid Investment Index and Data Center / Hyperscaler provided a stronger or more direct explanation of ELDS order movement.

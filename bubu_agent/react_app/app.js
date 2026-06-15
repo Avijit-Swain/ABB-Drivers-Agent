@@ -38,13 +38,18 @@ function friendlyStatus(message = "") {
   const lower = message.toLowerCase();
   if (lower.includes("received user message")) return "Understanding request";
   if (lower.includes("started processing")) return "Planning next step";
-  if (lower.includes("selected tool")) return "Selecting the right tool";
-  if (lower.includes("tools returned")) return "Reading tool results";
+  if (lower.includes("selected tool")) {
+    if (lower.includes("structured_data_tool") || lower.includes("plot_tool")) return "Generating visual";
+    return "Selecting the right tool";
+  }
+  if (lower.includes("tools returned")) {
+    if (lower.includes("structured_data_tool") || lower.includes("plot_tool")) return "Generating visual";
+    return "Reading tool results";
+  }
   if (lower.includes("tool result trace")) return "Reviewing retrieved data";
   if (lower.includes("summarization")) return "Summarizing results";
   if (lower.includes("prepared final answer") || lower.includes("routing to summarization")) return "Preparing response";
   if (lower.includes("completed request")) return "Finishing up";
-  if (lower.includes("plotter") || lower.includes("plot")) return "Generating visual";
   return "Working on it";
 }
 

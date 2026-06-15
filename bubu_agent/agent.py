@@ -33,6 +33,7 @@ _tl = threading.local()  # stores: cid (set in respond() before graph invocation
 _CURRENT_CID: dict = {"value": "unknown"}      # set in respond() before graph runs
 _LAST_CSV_PATH: dict = {"path": ""}            # set by structured_data_tool after CSV save
 _REQUEST_PLOT: dict = {"path": "", "latest": ""}  # set by _run_plotly_pipeline; cleared per request
+_THIS_TURN_STRUCTURED: dict = {"ran": False}   # True only when structured_data_tool ran this turn
 
 TRACE_CALLBACK = None
 LAST_STRUCTURED_RESULT = {
@@ -85,7 +86,7 @@ Use this table for:
 - division-level forecast summary
 
 Important columns:
-- division: business division such as ELSP or ELSB
+- division: business division — ELSP, ELSB, or ELDS
 - baseline_year: baseline year, usually 2024
 - forecast_year: forecast year, usually 2025
 - baseline_orders_musd: baseline orders in million USD
@@ -102,7 +103,7 @@ Example questions:
 - What is the actual growth for ELSB?
 - Show bear, base, and bull forecasts for ELSP.
 - What are the lower and upper bounds for the base forecast?
-- What is the alpha value for ELSB?
+- What is the alpha value for ELDS?
 """,
     "Driver_Contribution_KB": """
 Purpose:
@@ -119,9 +120,10 @@ Use this table for:
 - contribution percentage
 - positive contributors and negative drags
 - waterfall, contribution, bridge, or decomposition values
+- which drivers are common across divisions
 
 Important columns:
-- division: business division such as ELSP or ELSB
+- division: business division — ELSP, ELSB, or ELDS
 - selected_driver_name: selected driver/KPI name
 - elasticity: estimated driver elasticity
 - pessimistic_growth_pct, current_growth_pct, optimistic_growth_pct
@@ -134,20 +136,21 @@ Important columns:
 - contribution_pct: absolute contribution or importance share
 - contribution_note: whether the driver is a positive contributor or negative drag
 - usage_note: guidance on how to use this row
+- is_common_driver: whether this driver is shared across multiple divisions (Yes/No)
 
 Example questions:
 - What are the selected drivers for ELSP?
 - Show elasticity of Data Center for ELSP.
 - What is the recommended range for US Utility Capex?
-- What are the current driver growth values for ELSP?
-- Which driver contributed the most to ELSP orders?
+- Which drivers are common across all divisions?
+- Which driver contributed the most to ELDS orders?
 - Show contribution impact in MUSD for ELSB.
 - Which drivers are positive contributors and negative drags?
 """,
     "Monthly_Data": """
 Purpose:
-Monthly_Data contains monthly historical values for orders and selected
-external/internal drivers.
+Monthly_Data contains monthly historical values for orders and all candidate
+external/internal drivers across divisions.
 
 Use this table for:
 - monthly orders
@@ -159,25 +162,44 @@ Use this table for:
 
 Important columns:
 - date: monthly date
-- division: business division such as ELSP or ELSB
+- division: business division — ELSP, ELSB, or ELDS
 - orders_received_net_musd: monthly Orders Received Net in million USD
-- data_center___hyperscaler: monthly Data Center / Hyperscaler value
-- us_computer_products: monthly US Computer Products value
+
+Existing driver columns (unchanged):
+- data_center_hyperscaler: monthly Data Center / Hyperscaler value
+- us_utility_capex: monthly US Utility Capex value
 - operational_sales_expenses: monthly Operational Sales Expenses value
-- iron_and_steel_ppi: monthly Iron & Steel PPI value
-- china_mining_of_coal_and_lignite: monthly China Mining of Coal and Lignite value
+- iron_steel_ppi: monthly Iron & Steel PPI value
+- us_computer_products: monthly US Computer Products value
+- copper_price: monthly Copper Price value
 - us_gdp: monthly US GDP value
 - china_iip: monthly China IIP value
-- us_utility_capex: monthly US Utility Capex value
-- copper_price: monthly Copper Price value
 - europe_producer_price_index: monthly Europe Producer Price Index value
 
+New driver columns added:
+- electrical_equipment_ppi: monthly Electrical Equipment PPI value
+- general_industrial_production: monthly General Industrial Production index
+- manufacturing_pmi: monthly Manufacturing PMI value
+- consumer_confidence_index: monthly Consumer Confidence Index value
+- residential_housing_starts: monthly Residential Housing Starts value
+- crude_oil_price: monthly Crude Oil Price value
+- cpi_all_items: monthly CPI All Items (inflation) value
+- interest_rate: monthly Interest Rate value
+- exchange_rate_index: monthly Exchange Rate Index value
+- construction_spending_index: monthly Construction Spending Index value
+- retail_sales_index: monthly Retail Sales Index value
+- residential_building_permits: monthly Residential Building Permits value
+- grid_investment_index: monthly Grid Investment Index value
+- renewable_energy_capacity_additions: monthly Renewable Energy Capacity Additions value
+- transformer_raw_material_index: monthly Transformer Raw Material Index value
+- industrial_automation_capex: monthly Industrial Automation Capex value
+
 Example questions:
-- Show monthly orders for ELSP.
-- How did Data Center move over time?
-- Compare Data Center against ELSP orders.
+- Show monthly orders for ELDS.
+- How did Electrical Equipment PPI move over time for ELSP?
+- Compare Grid Investment Index against ELDS orders.
 - What was the monthly trend for ELSB orders?
-- Show historical movement of US GDP and orders.
+- Show historical movement of Manufacturing PMI and orders.
 """,
 }
 
@@ -468,18 +490,21 @@ def _fallback_sql(question: str, table_name: str) -> str:
     normalized = question.lower()
     has_elsp = "elsp" in normalized
     has_elsb = "elsb" in normalized
+    has_elds = "elds" in normalized
     division_filter = ""
-    if has_elsp and not has_elsb:
+    if has_elsp and not has_elsb and not has_elds:
         division_filter = " WHERE LOWER(division) = LOWER('ELSP')"
-    elif has_elsb and not has_elsp:
+    elif has_elsb and not has_elsp and not has_elds:
         division_filter = " WHERE LOWER(division) = LOWER('ELSB')"
-    # both mentioned → no filter, return all divisions
+    elif has_elds and not has_elsp and not has_elsb:
+        division_filter = " WHERE LOWER(division) = LOWER('ELDS')"
+    # multiple mentioned → no filter, return all divisions
 
-    limit = 50 if division_filter else 120
+    limit = 60 if division_filter else 180
     if table_name == "Monthly_Data":
         if "data center" in normalized or "hyperscaler" in normalized:
             return (
-                "SELECT date, division, orders_received_net_musd, data_center___hyperscaler "
+                "SELECT date, division, orders_received_net_musd, data_center_hyperscaler "
                 f"FROM Monthly_Data{division_filter} ORDER BY date LIMIT {limit}"
             )
         return f"SELECT date, division, orders_received_net_musd FROM Monthly_Data{division_filter} ORDER BY date LIMIT {limit}"
@@ -552,6 +577,7 @@ def structured_data_tool(question: str) -> str:
             )
 
         _emit_step("Structured data", "Returned tool results to assistant.")
+        _THIS_TURN_STRUCTURED["ran"] = True
         result = json.dumps({"status": "success", "sql": sql_used, "data": final_rows}, indent=2, default=str)
         _cache_structured_result(question, result)
         # Save result to CSV for Plotly pipeline
@@ -577,12 +603,20 @@ def structured_data_tool(question: str) -> str:
 
 @tool
 def unstructured_kpi_tool(question: str) -> str:
-    """Use for KPI definition and concept questions.
+    """Use for KPI definitions, concepts, and driver selection reasoning questions.
 
-    Use this for KPI meaning, KPI definition, business meaning, category,
-    synonyms, misspelled KPI names, or indirectly described KPI concepts.
-    Do not use it for selected drivers, elasticities, ranges, forecasts,
-    contributions, monthly data, or numeric structured lookups.
+    Use this for:
+    - KPI meaning, definition, business meaning, category, synonyms
+    - Misspelled or indirectly described KPI concepts
+    - Why a driver was selected or not selected for a division
+    - Why a driver was rejected or evaluated but not chosen
+    - What outperformed a driver for a given division
+    - Comparing two drivers for selection reasoning
+    - Signal strength, business relevance, incremental fit, collinearity risk of a driver
+    - Which drivers were evaluated but not selected for a division
+
+    Do NOT use it for: selected driver lists with elasticities/ranges, forecasts,
+    contribution percentages, impact MUSD, monthly data, or numeric structured lookups.
     """
     _emit_step("Unstructured KPI tool", "Reading KPI definition text.")
     content = KPI_DEFINITIONS_FALLBACK
@@ -1291,7 +1325,7 @@ Use this for structured business-data questions such as:
 - comparing structured values across divisions, drivers, scenarios, or time periods
 
 2. unstructured_kpi_tool
-Use this for KPI definition and concept questions such as:
+Use this for KPI definition and concept questions, AND for driver selection reasoning questions such as:
 - KPI meaning
 - KPI definition
 - KPI business meaning
@@ -1299,13 +1333,39 @@ Use this for KPI definition and concept questions such as:
 - synonyms or user terms
 - misspelled KPI names
 - indirectly described KPIs or concepts
+- why a driver was selected for a division
+- why a driver was not selected or was rejected for a division
+- what outperformed a driver for a division
+- which drivers were evaluated but not chosen for a division
+- comparing two drivers for a given division
+- signal strength or business relevance of a driver
+- driver evaluation and selection reasoning
 
-Examples:
+Examples (KPI definitions):
 - What does Data Center mean?
 - What is US Utility Capex?
 - What does copper price indicate?
 - What is China IIP?
 - What does hyperscaler mean?
+
+Examples (driver selection reasoning):
+User: Why was US GDP not selected for ELSP?
+Answer: Call unstructured_kpi_tool. The tool will return the reasoning: GDP was directionally relevant but too broad — Data Center / Hyperscaler outperformed it for ELSP because it is closer to the actual demand creation mechanism.
+
+User: Why was Data Center chosen for ELSB?
+Answer: Call unstructured_kpi_tool. The tool will return: Data Center / Hyperscaler was selected for ELSB because data-center buildout drives demand for low-voltage and electrification infrastructure, with High signal strength and High incremental fit.
+
+User: What outperformed US GDP for ELDS?
+Answer: Call unstructured_kpi_tool. The tool will return: Grid Investment Index and US Utility Capex outperformed US GDP for ELDS because they were more directly linked to distribution-system and grid demand.
+
+User: Which drivers were evaluated but not selected for ELSP?
+Answer: Call unstructured_kpi_tool. The tool will return the 9 rejected candidates for ELSP: US GDP, General Industrial Production, Manufacturing PMI, Consumer Confidence Index, Residential Housing Starts, Crude Oil Price, CPI All Items, Interest Rate, Exchange Rate Index.
+
+User: Why was Construction Spending Index not selected for ELDS?
+Answer: Call unstructured_kpi_tool. The tool will return: it had some relevance but was less direct than Grid Investment Index and US Utility Capex for ELDS.
+
+User: Compare US GDP vs Data Center for ELSP.
+Answer: Call unstructured_kpi_tool. The tool will return the evaluation entries for both, so you can compare their signal strength, business relevance, and selection outcome for ELSP.
 
 3. plot_tool
 Use this only when the user explicitly asks for:
@@ -1342,8 +1402,9 @@ When calling simulation_tool:
 - Do not mention alpha in the final answer.
 
 Important routing rules:
-- Do not use structured_data_tool for KPI definitions or KPI business meaning.
+- Do not use structured_data_tool for KPI definitions, KPI business meaning, or driver selection reasoning questions.
 - Do not use unstructured_kpi_tool for selected drivers, elasticities, ranges, forecasts, contributions, or monthly data.
+- Use unstructured_kpi_tool for any question about why a driver was selected or rejected, what outperformed it, or how drivers were evaluated.
 - Do not use plot_tool unless the user explicitly asks for a visual.
 - Do not call plot_tool after structured_data_tool — a chart is auto-generated after every structured data result.
 - Do not use structured_data_tool again for "plot this", "chart this", or "graph the above" if the needed data is already available in recent conversation.
@@ -1473,27 +1534,15 @@ class BubuAgent:
         return {"messages": []}
 
     def _auto_plot_check_node(self, state: MessagesState) -> dict:
-        messages = state["messages"]
-        for msg in reversed(messages):
-            name = getattr(msg, "name", None)
-            if name is None:
-                continue
-            if name == "structured_data_tool":
-                try:
-                    content = json.loads(str(msg.content or ""))
-                    if content.get("status") != "success":
-                        return {"messages": []}
-                except Exception:
-                    return {"messages": []}
-                user_q = LAST_STRUCTURED_RESULT.get("question", "generate a plot")
-                csv_path = _LAST_CSV_PATH.get("path", "")
-                if not csv_path:
-                    return {"messages": []}
-                _emit_step("Auto-plot", "Automatically generating Plotly chart after structured data retrieval.")
-                plot_result = _run_plotly_pipeline(user_q, csv_path)
-                return {"messages": [SystemMessage(content=f"[Auto-generated plot]\n{plot_result}")]}
-            break  # only check the most recent tool message
-        return {"messages": []}
+        if not _THIS_TURN_STRUCTURED.get("ran"):
+            return {"messages": []}
+        csv_path = _LAST_CSV_PATH.get("path", "")
+        if not csv_path:
+            return {"messages": []}
+        user_q = LAST_STRUCTURED_RESULT.get("question", "generate a plot")
+        _emit_step("Auto-plot", "Automatically generating Plotly chart after structured data retrieval.")
+        plot_result = _run_plotly_pipeline(user_q, csv_path)
+        return {"messages": [SystemMessage(content=f"[Auto-generated plot]\n{plot_result}")]}
 
     def _summarization_node(self, state: MessagesState):
         messages = state["messages"]
@@ -1569,7 +1618,7 @@ class BubuAgent:
             elif node_name == "tool_result_trace":
                 _emit_step("Graph", "Tool result trace node completed.")
             elif node_name == "auto_plot_check":
-                _emit_step("Graph", "Auto-plot check node completed.")
+                _emit_step("Graph", "Auto visual check completed.")
             elif node_name == "summarization":
                 _emit_step("Graph", "Summarization node completed.")
             else:
@@ -1628,7 +1677,7 @@ class BubuAgent:
                     {
                         "type": "node",
                         "node": "auto_plot_check",
-                        "message": "Auto-plot check node completed.",
+                        "message": "Auto visual check completed.",
                     }
                 )
             elif node_name == "summarization":
@@ -1662,6 +1711,7 @@ class BubuAgent:
         _REQUEST_PLOT["latest"] = ""
         LAST_STRUCTURED_RESULT.clear()
         _LAST_CSV_PATH["path"] = ""
+        _THIS_TURN_STRUCTURED["ran"] = False
         history = history or []
         normalized = user_message.strip().lower()
         print(f"[respond_stream] conversation_id={conversation_id} | history_msgs={len(history)}")
@@ -1732,6 +1782,7 @@ class BubuAgent:
         _REQUEST_PLOT["latest"] = ""
         LAST_STRUCTURED_RESULT.clear()
         _LAST_CSV_PATH["path"] = ""
+        _THIS_TURN_STRUCTURED["ran"] = False
         history = history or []
         normalized = user_message.strip().lower()
         print(f"[respond] conversation_id={conversation_id} | history_msgs={len(history)}")
