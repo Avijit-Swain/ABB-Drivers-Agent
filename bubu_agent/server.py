@@ -498,7 +498,8 @@ def _generate_pdf(cid: str) -> bytes:
 
     # Topic band — full-width gray background, prominent title + date
     from datetime import datetime as _dt
-    generated = _dt.now().strftime("%-d %b %Y · %-I:%M %p")
+    now = _dt.now()
+    generated = f"{now.day} {now.strftime('%b %Y')} · {now.strftime('%I:%M %p').lstrip('0')}"
     topic_block = Table(
         [
             [Paragraph(_html.escape(title), S_TOPIC)],

@@ -1,0 +1,49 @@
+Metadata-Version: 2.1
+Name: streamlit-mermaid
+Version: 0.3.0
+Summary: 
+License: MIT
+Author: nekanat
+Author-email: nekanat.stock@gmail.com
+Requires-Python: >=3.9,<4.0
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.9
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Requires-Dist: altair (<5)
+Requires-Dist: setuptools (>=75.6.0,<76.0.0)
+Requires-Dist: streamlit (>=1.0.0,<2.0.0)
+Description-Content-Type: text/markdown
+
+# streamlit-mermaid
+
+Streamlit Component, for Mermaid.
+
+## Installation
+
+```bash
+pip install streamlit-mermaid
+```
+
+## Quick start
+
+```py
+import streamlit_mermaid as stmd
+import streamlit as st
+
+code = """
+graph TD
+    A --> B
+"""
+
+stmd.st_mermaid(code)
+```
+
+```bash
+streamlit run examples/example.py
+```
+
+![demo](demo.gif)
+
