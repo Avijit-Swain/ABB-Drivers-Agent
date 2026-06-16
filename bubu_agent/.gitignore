@@ -5,4 +5,6 @@ __pycache__/
 .matplotlib/
 plots/
 data/long_term_memory.txt
+data/structured_results/
 new artifacts/*.ipynb
+.venv/
