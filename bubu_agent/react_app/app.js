@@ -57,6 +57,30 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function formatMusd(value) {
+  const numeric = Number(value || 0);
+  if (Math.abs(numeric) >= 1000) {
+    return `$${(numeric / 1000).toFixed(2)}B`;
+  }
+  return `$${numeric.toFixed(0)}M`;
+}
+
+function formatPct(value) {
+  const numeric = Number(value || 0);
+  const sign = numeric > 0 ? "+" : "";
+  return `${sign}${numeric.toFixed(1)}%`;
+}
+
+function formatImpact(value) {
+  if (value === null || value === undefined || Number.isNaN(Number(value))) return "N/A";
+  return formatPct(Number(value));
+}
+
+function monthName(monthNumber) {
+  const names = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  return names[(Number(monthNumber) || 1) - 1] || "";
+}
+
 function Icon({ name }) {
   const common = { viewBox: "0 0 24 24", "aria-hidden": "true" };
   const paths = {
@@ -93,46 +117,99 @@ function Icon({ name }) {
   return h("svg", common, ...(paths[name] || paths.chart));
 }
 
-function RedSparkline() {
+function RedSparkline({ points = null, tone = "negative" } = {}) {
+  const strokeColor = tone === "positive" ? "#13a06f" : "#ff000f";
+  const generatedPoints = useMemo(() => {
+    if (!points || points.length < 2) {
+      return "4,30 14,24 24,29 34,18 44,26 54,20 64,30 74,25 84,36 94,34 104,41 116,39 122,46";
+    }
+    const width = 118;
+    const height = 40;
+    const min = Math.min(...points);
+    const max = Math.max(...points);
+    const range = max - min || 1;
+    return points.map((value, index) => {
+      const x = 4 + (index * width) / (points.length - 1);
+      const y = 10 + height - ((value - min) / range) * height;
+      return `${x.toFixed(1)},${y.toFixed(1)}`;
+    }).join(" ");
+  }, [points]);
+  const lastPair = generatedPoints.split(" ").at(-1)?.split(",").map(Number) || [122, 46];
+
   return h(
     "svg",
-    { viewBox: "0 0 126 58", className: "sparkline red-sparkline", preserveAspectRatio: "none" },
+    { viewBox: "0 0 126 58", className: `sparkline red-sparkline ${tone}-sparkline`, preserveAspectRatio: "none" },
     h("polyline", {
-      points: "4,30 14,24 24,29 34,18 44,26 54,20 64,30 74,25 84,36 94,34 104,41 116,39 122,46",
+      points: generatedPoints,
       fill: "none",
-      stroke: "#ff000f",
+      stroke: strokeColor,
       strokeWidth: "2.6",
       strokeLinecap: "round",
       strokeLinejoin: "round",
     }),
-    h("circle", { cx: "122", cy: "46", r: "3.6", fill: "#ff000f" })
+    h("circle", { cx: String(lastPair[0]), cy: String(lastPair[1]), r: "3.6", fill: strokeColor })
   );
 }
 
-function TrendChart() {
+function TrendChart({ data = [] } = {}) {
+  const chart = useMemo(() => {
+    const rows = data.filter((row) => row.growth_pct !== null && row.growth_pct !== undefined);
+    if (rows.length < 2) {
+      return {
+        points: "28,46 42,45 56,45 70,44 84,45 98,46 112,44 126,43 140,44 154,43 168,44 182,45",
+        firstLabel: "Jan",
+        midLabel: "Jul",
+        lastLabel: "Dec",
+        lastX: 182,
+        lastY: 45,
+      };
+    }
+    const values = rows.map((row) => Number(row.growth_pct));
+    const min = -10;
+    const max = 10;
+    const range = max - min;
+    const xStart = 28;
+    const xEnd = 182;
+    const yTop = 13;
+    const yBottom = 78;
+    const points = values.map((value, index) => {
+      const x = xStart + (index * (xEnd - xStart)) / (values.length - 1);
+      const clampedValue = Math.max(min, Math.min(max, value));
+      const y = yBottom - ((clampedValue - min) / range) * (yBottom - yTop);
+      return { x, y, value, row: rows[index] };
+    });
+    return {
+      points: points.map((point) => `${point.x.toFixed(1)},${point.y.toFixed(1)}`).join(" "),
+      firstLabel: monthName(rows[0].month_num),
+      midLabel: monthName(rows[Math.min(6, rows.length - 1)].month_num),
+      lastLabel: monthName(rows[rows.length - 1].month_num),
+      lastX: points[points.length - 1].x,
+      lastY: points[points.length - 1].y,
+    };
+  }, [data]);
+
   return h(
     "svg",
     { viewBox: "0 0 190 92", className: "trend-chart", preserveAspectRatio: "none" },
-    h("line", { x1: "30", y1: "16", x2: "30", y2: "70", stroke: "#d8dee9", strokeWidth: "1" }),
-    h("line", { x1: "30", y1: "70", x2: "178", y2: "70", stroke: "#d8dee9", strokeWidth: "1" }),
-    h("line", { x1: "30", y1: "28", x2: "178", y2: "28", stroke: "#edf1f7", strokeWidth: "1" }),
-    h("line", { x1: "30", y1: "49", x2: "178", y2: "49", stroke: "#edf1f7", strokeWidth: "1" }),
-    h("text", { x: "5", y: "20", fill: "#7b8496", fontSize: "7", fontWeight: "650" }, "20%"),
-    h("text", { x: "13", y: "52", fill: "#7b8496", fontSize: "7", fontWeight: "650" }, "0%"),
-    h("text", { x: "4", y: "74", fill: "#7b8496", fontSize: "7", fontWeight: "650" }, "-20%"),
+    h("line", { x1: "24", y1: "13", x2: "24", y2: "78", stroke: "#d8dee9", strokeWidth: "1" }),
+    h("line", { x1: "24", y1: "45.5", x2: "184", y2: "45.5", stroke: "#d8dee9", strokeWidth: "1" }),
+    h("line", { x1: "24", y1: "13", x2: "184", y2: "13", stroke: "#edf1f7", strokeWidth: "1" }),
+    h("line", { x1: "24", y1: "78", x2: "184", y2: "78", stroke: "#edf1f7", strokeWidth: "1" }),
+    h("text", { x: "5", y: "16", fill: "#7b8496", fontSize: "7", fontWeight: "650" }, "10%"),
+    h("text", { x: "13", y: "48", fill: "#7b8496", fontSize: "7", fontWeight: "650" }, "0%"),
+    h("text", { x: "2", y: "81", fill: "#7b8496", fontSize: "7", fontWeight: "650" }, "-10%"),
     h("polyline", {
-      points: "33,43 42,25 52,32 61,24 71,42 80,39 90,43 100,31 109,54 118,39 128,61 137,50 147,66 156,58 166,73 176,75",
+      points: chart.points,
       fill: "none",
       stroke: "#5a7fd9",
       strokeWidth: "2.8",
       strokeLinecap: "round",
       strokeLinejoin: "round",
     }),
-    h("circle", { cx: "176", cy: "75", r: "4", fill: "#2463eb" }),
-    h("text", { x: "31", y: "87", fill: "#7b8496", fontSize: "7", fontWeight: "650" }, "Jul 23"),
-    h("text", { x: "72", y: "87", fill: "#7b8496", fontSize: "7", fontWeight: "650" }, "Oct 23"),
-    h("text", { x: "145", y: "87", fill: "#7b8496", fontSize: "7", fontWeight: "650" }, "Jun 24"),
-    h("text", { x: "151", y: "62", fill: "#2463eb", fontSize: "8", fontWeight: "800" }, "-18.7%")
+    h("circle", { cx: String(chart.lastX), cy: String(chart.lastY), r: "4", fill: "#2463eb" }),
+    h("text", { x: "26", y: "89", fill: "#7b8496", fontSize: "7", fontWeight: "650" }, chart.firstLabel),
+    h("text", { x: "100", y: "89", fill: "#7b8496", fontSize: "7", fontWeight: "650", textAnchor: "middle" }, chart.midLabel),
+    h("text", { x: "181", y: "89", fill: "#7b8496", fontSize: "7", fontWeight: "650", textAnchor: "end" }, chart.lastLabel)
   );
 }
 
@@ -150,6 +227,47 @@ function KpiCard({ icon, iconClass = "", cardClass = "", title, subtitle, metric
     detail && h("div", { className: "kpi-detail" }, detail),
     pill && h("div", { className: "kpi-pill" }, pill),
     link && h("button", { className: "kpi-link" }, link)
+  );
+}
+
+function OrdersGrowthTile({ division, onDivisionChange, tileData, tileError }) {
+  const tone = tileData?.direction === "positive" ? "positive" : tileData?.direction === "negative" ? "negative" : "neutral";
+  const points = (tileData?.data || []).map((row) => Number(row.orders_received_net_musd || 0));
+  const trendArrow = tone === "positive" ? "↑" : "↓";
+  const metricText = tileData ? formatPct(tileData.growth_pct) : tileError ? "N/A" : "Loading";
+  const pillText = tileData ? `${trendArrow} ${tileData.message}` : tileError ? "Orders data unavailable" : "Fetching SQL data";
+
+  return h(KpiCard, {
+    icon: "▦",
+    iconClass: tone === "positive" ? "green-icon" : tone === "negative" ? "red-icon" : "blue-icon",
+    cardClass: `orders-growth-card ${tone}-card`,
+    title: h(
+      "span",
+      { className: "kpi-title-row" },
+      h("span", null, "Orders Growth"),
+      h(
+        "select",
+        {
+          className: `division-select ${tone}-select`,
+          value: division,
+          "aria-label": "Select division for orders growth",
+          onChange: (e) => onDivisionChange(e.target.value),
+        },
+        h("option", { value: "ELSP" }, "ELSP"),
+        h("option", { value: "ELSB" }, "ELSB"),
+        h("option", { value: "ELDS" }, "ELDS")
+      )
+    ),
+    subtitle: "vs previous 6 months",
+    detail: h("span", null, "Total Orders ", h("strong", null, tileData ? formatMusd(tileData.recent_6_sum_musd) : "Loading")),
+    pill: pillText,
+  },
+    h(
+      "div",
+      { className: "growth-body" },
+      h("div", { className: `kpi-metric ${tone}` }, metricText),
+      h(RedSparkline, { points, tone })
+    )
   );
 }
 
@@ -479,31 +597,73 @@ function Sidebar({ disabled, onSuggestion, onNewConversation, conversations, con
   );
 }
 
+function ScenarioForecast({ scenarios = [] } = {}) {
+  return h(
+    "div",
+    { className: "scenario-stack" },
+    scenarios.map((scenario) =>
+      h(
+        "div",
+        { key: scenario.name, className: `scenario-row scenario-${String(scenario.name || "").toLowerCase()}` },
+        h("span", null, scenario.name),
+        h("strong", null, formatImpact(scenario.value))
+      )
+    )
+  );
+}
+
 function DashboardCards() {
+  const [division, setDivision] = useState("ELSP");
+  const [dashboardData, setDashboardData] = useState(null);
+  const [dashboardError, setDashboardError] = useState("");
+
+  useEffect(() => {
+    let cancelled = false;
+    setDashboardData(null);
+    setDashboardError("");
+    fetch(`/api/dashboard/tiles?division=${encodeURIComponent(division)}`)
+      .then((res) => {
+        if (!res.ok) throw new Error("Unable to fetch dashboard data");
+        return res.json();
+      })
+      .then((data) => {
+        if (!cancelled) setDashboardData(data);
+      })
+      .catch((err) => {
+        if (!cancelled) setDashboardError(err.message || "Unable to fetch dashboard data");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [division]);
+
+  const negativeDriver = dashboardData?.drivers?.top_negative;
+  const positiveDriver = dashboardData?.drivers?.top_positive;
+  const negativeDriverValue = Number(negativeDriver?.impact_pct_current);
+  const negativeDriverClass = negativeDriver && negativeDriverValue >= 0 ? "positive small" : "negative small";
+  const positiveDriverValue = Number(positiveDriver?.impact_pct_current);
+  const positiveDriverClass = positiveDriver && positiveDriverValue < 0 ? "negative small" : "positive small";
+  const forecastScenarios = dashboardData?.forecast?.scenarios || [
+    { name: "Bear", value: null },
+    { name: "Base", value: null },
+    { name: "Bull", value: null },
+  ];
+
   return h(
     "div",
     { className: "kpi-grid" },
-    h(KpiCard, {
-      icon: "▦",
-      iconClass: "red-icon",
-      title: "Orders Growth (ELSP)",
-      subtitle: "vs previous 6 months",
-      detail: h("span", null, "Total Orders ", h("strong", null, "$2.42B")),
-      pill: "↓ Declined vs previous period",
-    },
-      h(
-        "div",
-        { className: "growth-body" },
-        h("div", { className: "kpi-metric negative" }, "-18.7%"),
-        h(RedSparkline)
-      )
-    ),
+    h(OrdersGrowthTile, {
+      division,
+      onDivisionChange: setDivision,
+      tileData: dashboardData?.orders_growth,
+      tileError: dashboardError,
+    }),
     h(KpiCard, {
       icon: "↗",
       iconClass: "blue-icon",
       title: "Orders Trend",
       subtitle: "Last 12 months",
-      chart: h(React.Fragment, null, h(TrendChart)),
+      chart: h(React.Fragment, null, h(TrendChart, { data: dashboardData?.orders_trend?.data || [] })),
     }),
     h(KpiCard, {
       icon: "▼",
@@ -511,9 +671,9 @@ function DashboardCards() {
       cardClass: "compact-kpi",
       title: "Top Negative Driver",
       subtitle: "Impact %",
-      metric: "-7.2%",
-      metricClass: "negative small",
-      detail: h("strong", null, "Data Center Demand"),
+      metric: negativeDriver ? formatImpact(negativeDriver.impact_pct_current) : "Loading",
+      metricClass: negativeDriver ? negativeDriverClass : "negative small",
+      detail: h("strong", null, negativeDriver?.selected_driver_name || "Loading"),
     }),
     h(KpiCard, {
       icon: "▲",
@@ -521,19 +681,17 @@ function DashboardCards() {
       cardClass: "compact-kpi",
       title: "Top Positive Driver",
       subtitle: "Impact %",
-      metric: "+4.3%",
-      metricClass: "positive small",
-      detail: h("strong", null, "Pricing / Realization"),
+      metric: positiveDriver ? formatImpact(positiveDriver.impact_pct_current) : "Loading",
+      metricClass: positiveDriver ? positiveDriverClass : "positive small",
+      detail: h("strong", null, positiveDriver?.selected_driver_name || "Loading"),
     }),
     h(KpiCard, {
       icon: "⚠",
       iconClass: "orange-icon",
       cardClass: "compact-kpi",
-      title: "Largest Anomaly",
-      subtitle: "vs normal range",
-      metric: "-7.2%",
-      metricClass: "negative small",
-      detail: h("strong", null, "Data Center Demand"),
+      title: "Scenario",
+      subtitle: "Point forecast",
+      chart: h(ScenarioForecast, { scenarios: forecastScenarios }),
     })
   );
 }

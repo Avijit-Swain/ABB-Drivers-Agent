@@ -16,7 +16,7 @@ from datetime import datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Optional
-from urllib.parse import unquote, urlparse
+from urllib.parse import parse_qs, unquote, urlparse
 
 from dotenv import load_dotenv
 
@@ -29,6 +29,7 @@ WEB_DIR = APP_DIR / "react_app"
 PLOTS_DIR = APP_DIR / "plots"
 ASSETS_DIR = APP_DIR / "assets"
 CONV_DB_PATH = AGENT_DB_PATH
+VALID_DASHBOARD_DIVISIONS = {"ELSP", "ELSB", "ELDS"}
 
 EMAIL_HOST = os.getenv("EMAIL_HOST", "smtp.gmail.com")
 EMAIL_PORT = int(os.getenv("EMAIL_PORT", "587"))
@@ -230,6 +231,195 @@ def _get_conversation_messages(cid: str) -> list:
         msg["plot_urls"] = json.loads(msg.get("plot_urls") or "[]")
         result.append(msg)
     return result
+
+
+def _get_orders_growth_tile(division: str) -> dict:
+    division = (division or "ELSP").upper().strip()
+    if division not in VALID_DASHBOARD_DIVISIONS:
+        division = "ELSP"
+
+    sql = """
+        WITH latest_12 AS (
+            SELECT
+                date,
+                division,
+                orders_received_net_musd
+            FROM Monthly_Data
+            WHERE division = ?
+            ORDER BY date DESC
+            LIMIT 12
+        )
+        SELECT
+            date,
+            division,
+            orders_received_net_musd
+        FROM latest_12
+        ORDER BY date ASC
+    """
+
+    with _db() as conn:
+        conn.row_factory = sqlite3.Row
+        rows = [dict(row) for row in conn.execute(sql, (division,)).fetchall()]
+
+    values = [float(row["orders_received_net_musd"] or 0) for row in rows]
+    previous_6 = values[:6]
+    recent_6 = values[6:]
+    previous_sum = sum(previous_6)
+    recent_sum = sum(recent_6)
+    growth_pct = ((recent_sum - previous_sum) / previous_sum * 100) if previous_sum else 0
+
+    return {
+        "division": division,
+        "sql": sql.strip(),
+        "data": rows,
+        "recent_6_sum_musd": round(recent_sum, 2),
+        "previous_6_sum_musd": round(previous_sum, 2),
+        "growth_pct": round(growth_pct, 1),
+        "direction": "positive" if growth_pct >= 0 else "negative",
+        "message": "Increased vs previous period" if growth_pct >= 0 else "Declined vs previous period",
+    }
+
+
+def _get_orders_trend_tile(division: str) -> dict:
+    division = (division or "ELSP").upper().strip()
+    if division not in VALID_DASHBOARD_DIVISIONS:
+        division = "ELSP"
+
+    sql = """
+        WITH latest_year AS (
+            SELECT MAX(CAST(strftime('%Y', date) AS INTEGER)) AS year
+            FROM Monthly_Data
+            WHERE division = ?
+        ),
+        current_year AS (
+            SELECT
+                CAST(strftime('%m', date) AS INTEGER) AS month_num,
+                strftime('%m', date) AS month_label,
+                orders_received_net_musd AS current_orders
+            FROM Monthly_Data
+            WHERE division = ?
+              AND CAST(strftime('%Y', date) AS INTEGER) = (SELECT year FROM latest_year)
+        ),
+        previous_year AS (
+            SELECT
+                CAST(strftime('%m', date) AS INTEGER) AS month_num,
+                orders_received_net_musd AS previous_orders
+            FROM Monthly_Data
+            WHERE division = ?
+              AND CAST(strftime('%Y', date) AS INTEGER) = (SELECT year - 1 FROM latest_year)
+        )
+        SELECT
+            (SELECT year FROM latest_year) AS year,
+            current_year.month_num,
+            current_year.month_label,
+            current_year.current_orders,
+            previous_year.previous_orders,
+            ROUND(
+                CASE
+                    WHEN previous_year.previous_orders IS NULL OR previous_year.previous_orders = 0 THEN NULL
+                    ELSE ((current_year.current_orders - previous_year.previous_orders) / previous_year.previous_orders) * 100
+                END,
+                2
+            ) AS growth_pct
+        FROM current_year
+        JOIN previous_year ON previous_year.month_num = current_year.month_num
+        ORDER BY current_year.month_num ASC
+    """
+
+    with _db() as conn:
+        conn.row_factory = sqlite3.Row
+        rows = [dict(row) for row in conn.execute(sql, (division, division, division)).fetchall()]
+
+    return {
+        "division": division,
+        "sql": sql.strip(),
+        "data": rows,
+    }
+
+
+def _get_driver_contribution_tile(division: str) -> dict:
+    division = (division or "ELSP").upper().strip()
+    if division not in VALID_DASHBOARD_DIVISIONS:
+        division = "ELSP"
+
+    top_positive_sql = """
+        SELECT
+            selected_driver_name,
+            impact_pct_current
+        FROM Driver_Contribution_KB
+        WHERE division = ?
+        ORDER BY impact_pct_current DESC
+        LIMIT 1
+    """
+    top_negative_sql = """
+        SELECT
+            selected_driver_name,
+            impact_pct_current
+        FROM Driver_Contribution_KB
+        WHERE division = ?
+        ORDER BY impact_pct_current ASC
+        LIMIT 1
+    """
+
+    with _db() as conn:
+        conn.row_factory = sqlite3.Row
+        positive = conn.execute(top_positive_sql, (division,)).fetchone()
+        negative = conn.execute(top_negative_sql, (division,)).fetchone()
+
+    return {
+        "division": division,
+        "top_positive": dict(positive) if positive else None,
+        "top_negative": dict(negative) if negative else None,
+        "sql": {
+            "top_positive": top_positive_sql.strip(),
+            "top_negative": top_negative_sql.strip(),
+        },
+    }
+
+
+def _get_forecast_tile(division: str) -> dict:
+    division = (division or "ELSP").upper().strip()
+    if division not in VALID_DASHBOARD_DIVISIONS:
+        division = "ELSP"
+
+    sql = """
+        SELECT
+            bear_point_forecast_pct,
+            base_point_forecast_pct,
+            bull_point_forecast_pct
+        FROM Forecast_KB
+        WHERE division = ?
+        LIMIT 1
+    """
+
+    with _db() as conn:
+        conn.row_factory = sqlite3.Row
+        row = conn.execute(sql, (division,)).fetchone()
+
+    forecast = dict(row) if row else {}
+    return {
+        "division": division,
+        "sql": sql.strip(),
+        "scenarios": [
+            {"name": "Bear", "value": forecast.get("bear_point_forecast_pct")},
+            {"name": "Base", "value": forecast.get("base_point_forecast_pct")},
+            {"name": "Bull", "value": forecast.get("bull_point_forecast_pct")},
+        ],
+    }
+
+
+def _get_dashboard_tiles(division: str) -> dict:
+    division = (division or "ELSP").upper().strip()
+    if division not in VALID_DASHBOARD_DIVISIONS:
+        division = "ELSP"
+
+    return {
+        "division": division,
+        "orders_growth": _get_orders_growth_tile(division),
+        "orders_trend": _get_orders_trend_tile(division),
+        "drivers": _get_driver_contribution_tile(division),
+        "forecast": _get_forecast_tile(division),
+    }
 
 
 def _generate_title(user_message: str) -> str:
@@ -779,6 +969,16 @@ class BubuRequestHandler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         parsed = urlparse(self.path)
+
+        if parsed.path == "/api/dashboard/orders-growth":
+            query = parse_qs(parsed.query)
+            self._send_json(200, _get_orders_growth_tile((query.get("division") or ["ELSP"])[0]))
+            return
+
+        if parsed.path == "/api/dashboard/tiles":
+            query = parse_qs(parsed.query)
+            self._send_json(200, _get_dashboard_tiles((query.get("division") or ["ELSP"])[0]))
+            return
 
         if parsed.path == "/api/conversations":
             self._send_json(200, {"conversations": _get_conversations()})
