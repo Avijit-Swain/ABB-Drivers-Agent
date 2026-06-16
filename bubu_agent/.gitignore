@@ -3,7 +3,6 @@ __pycache__/
 *.pyc
 .DS_Store
 .matplotlib/
-plots/
 data/long_term_memory.txt
 data/structured_results/
 new artifacts/*.ipynb

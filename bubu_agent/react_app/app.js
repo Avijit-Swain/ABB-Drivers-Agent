@@ -212,9 +212,17 @@ function ConversationActions({ conversationId, conversationTitle, disabled }) {
   async function downloadPdf() {
     if (disabled || isDownloading) return;
     setIsDownloading(true);
+    setStatusMsg("");
     try {
       const res = await fetch(`/api/conversations/${conversationId}/pdf`);
-      if (!res.ok) throw new Error("Failed");
+      if (!res.ok) {
+        let errorMessage = "PDF download failed.";
+        try {
+          const data = await res.json();
+          errorMessage = data.error || errorMessage;
+        } catch (_) {}
+        throw new Error(errorMessage);
+      }
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
@@ -222,7 +230,9 @@ function ConversationActions({ conversationId, conversationTitle, disabled }) {
       a.download = `${conversationTitle || "conversation"}.pdf`;
       a.click();
       URL.revokeObjectURL(url);
-    } catch (_) {
+    } catch (err) {
+      setStatusMsg(`PDF failed: ${err.message}`);
+      setShowPopover(true);
     } finally {
       setIsDownloading(false);
     }
@@ -258,14 +268,14 @@ function ConversationActions({ conversationId, conversationTitle, disabled }) {
         body: JSON.stringify({ email: recipient.email, name: recipient.name || "" }),
       });
       const data = await res.json();
-      if (data.ok) {
+      if (res.ok && data.ok) {
         setSentTo(recipient.email);
         setStatusMsg(`Sent to ${recipient.email}`);
       } else {
-        setStatusMsg("Failed to send. Try again.");
+        setStatusMsg(data.error ? `Email failed: ${data.error}` : "Email failed. Try again.");
       }
-    } catch (_) {
-      setStatusMsg("Failed to send. Try again.");
+    } catch (err) {
+      setStatusMsg(`Email failed: ${err.message}`);
     } finally {
       setSendingTo(null);
       setTimeout(() => {

@@ -5,6 +5,7 @@ import os
 import smtplib
 import sqlite3
 import tempfile
+import traceback
 import uuid
 from io import BytesIO
 from email import encoders as email_encoders
@@ -664,6 +665,7 @@ class BubuRequestHandler(BaseHTTPRequestHandler):
                 _send_gmail(to_email, recipient_name, pdf_bytes, title)
                 self._send_json(200, {"ok": True})
             except Exception as exc:
+                traceback.print_exc()
                 self._send_json(500, {"error": str(exc)})
             return
 
@@ -794,6 +796,7 @@ class BubuRequestHandler(BaseHTTPRequestHandler):
                     pdf_bytes = _generate_pdf(cid)
                     self._send_pdf(pdf_bytes, title)
                 except Exception as exc:
+                    traceback.print_exc()
                     self._send_json(500, {"error": str(exc)})
             else:
                 self._send_json(404, {"error": "Not found"})
