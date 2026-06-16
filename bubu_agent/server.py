@@ -30,8 +30,9 @@ PLOTS_DIR = APP_DIR / "plots"
 ASSETS_DIR = APP_DIR / "assets"
 CONV_DB_PATH = AGENT_DB_PATH
 
-EMAIL_HOST = "smtp.gmail.com"
-EMAIL_PORT = 587
+EMAIL_HOST = os.getenv("EMAIL_HOST", "smtp.gmail.com")
+EMAIL_PORT = int(os.getenv("EMAIL_PORT", "587"))
+EMAIL_USE_SSL = os.getenv("EMAIL_USE_SSL", "false").strip().lower() in {"1", "true", "yes", "on"}
 EMAIL_USER = os.getenv("EMAIL_USER", "")
 EMAIL_PASSWORD = os.getenv("EMAIL_PASSWORD", "")
 PROFILE_NAME = os.getenv("PROFILE_NAME", "")
@@ -550,8 +551,10 @@ def _send_gmail(to_email: str, recipient_name: str, pdf_bytes: bytes, conversati
     attachment.add_header("Content-Disposition", "attachment", filename=f"{safe_name}.pdf")
     msg.attach(attachment)
 
-    with smtplib.SMTP(EMAIL_HOST, EMAIL_PORT) as server:
-        server.starttls()
+    smtp_cls = smtplib.SMTP_SSL if EMAIL_USE_SSL else smtplib.SMTP
+    with smtp_cls(EMAIL_HOST, EMAIL_PORT, timeout=30) as server:
+        if not EMAIL_USE_SSL:
+            server.starttls()
         server.login(EMAIL_USER, EMAIL_PASSWORD)
         server.send_message(msg)
 

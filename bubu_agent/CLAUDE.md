@@ -28,6 +28,16 @@ There is no test suite, linter, or build step. Validation is done by running the
 
 `agent.py` instantiates the agent at import time and **raises `RuntimeError` if `OPENAI_API_KEY` is missing** — the app will not start without it. `OPENAI_MODEL` defaults to `gpt-4.1`. Optional email keys (`EMAIL_USER`, `EMAIL_PASSWORD`) are used by `server.py` for an email-report feature. The Azure keys in `.env` are not wired into `agent.py`.
 
+For Gmail SMTP on networks where STARTTLS port 587 is reset, use SSL port 465:
+
+```env
+EMAIL_HOST=smtp.gmail.com
+EMAIL_PORT=465
+EMAIL_USE_SSL=true
+EMAIL_USER=...
+EMAIL_PASSWORD=...
+```
+
 ## Two frontends, one agent
 
 - **`app.py`** — Streamlit UI. Imports `agent` at module load, wires the live-trace panel via `set_trace_callback`, drives a `pending_prompt` state machine so Streamlit can show a spinner before `agent.respond` blocks.
