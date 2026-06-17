@@ -4,6 +4,16 @@
 **/*.pyc
 **/.env
 **/.matplotlib/
+**/.venv/
+**/.venv_fresh_test/
+**/.vscode/
+**/.claude/
+**/.streamlit/
 **/plots/
+**/data/structured_results/
 **/long_term_memory.txt
 **/*.ipynb
+**/*.db-shm
+**/*.db-wal
+**/*.db.bak
+*.bak

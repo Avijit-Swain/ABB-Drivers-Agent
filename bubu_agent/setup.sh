@@ -10,6 +10,5 @@ echo "Installing dependencies..."
 
 echo ""
 echo "Setup complete. Run with:"
-echo "  ./run_app.sh          # Streamlit UI"
 echo "  ./run_server.sh       # React UI (default port 8500)"
 echo "  ./run_server.sh 8503  # React UI on a custom port"

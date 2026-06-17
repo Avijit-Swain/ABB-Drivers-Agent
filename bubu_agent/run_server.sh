@@ -5,4 +5,4 @@ if [ ! -f ".venv/bin/activate" ]; then
 fi
 source "$(dirname "$0")/.venv/bin/activate"
 PORT=${1:-8500}
-python -c "from server import run; run(port=$PORT)"
+python -c "from backend.server import run; run(port=$PORT)"

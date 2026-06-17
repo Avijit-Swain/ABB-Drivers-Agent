@@ -1,6 +1,0 @@
-selected_driver_name,driver_direction,rationale_short,impact_pct_current,impact_musd_current,contribution_note
-Data Center / Hyperscaler,Positive,Selected because Data Center / Hyperscaler capex accelerated after the AI boom and showed strong business relevance to ELSP order movement.,8.911,89.11,Positive contributor
-Operational Sales Expenses,Positive,Selected as an internal commercial activity indicator that can reflect sales push and demand generation.,0.4336,4.336,Positive contributor
-China Mining of Coal and Lignite,Positive,Selected as a proxy for heavy industrial and energy-sector activity in China.,0.0102,0.102,Positive contributor
-US Computer Products,Positive,Selected as a technology-sector indicator linked to electronics and automation demand.,0.0082,0.082,Positive contributor
-Iron & Steel PPI,Positive,Selected as a producer-price indicator reflecting industrial price movement and input-cost environment.,-0.109,-1.09,Negative contributor / drag

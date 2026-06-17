@@ -3,7 +3,16 @@ __pycache__/
 *.pyc
 .DS_Store
 .matplotlib/
-data/long_term_memory.txt
-data/structured_results/
-new artifacts/*.ipynb
 .venv/
+.venv_fresh_test/
+.vscode/
+.claude/
+.streamlit/
+plots/
+data/structured_results/
+data/long_term_memory.txt
+data/*.db-shm
+data/*.db-wal
+data/*.db.bak
+*.bak
+*.ipynb
