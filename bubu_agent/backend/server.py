@@ -42,6 +42,17 @@ PROFILE_TITLE = os.getenv("PROFILE_TITLE", "")
 
 def _parse_agent_content(content: str) -> dict:
     lines = content.splitlines()
+    structured_summary = ""
+    structured_details = ""
+    if lines:
+        try:
+            structured = json.loads(lines[0])
+            if isinstance(structured, dict) and "summary_markdown" in structured:
+                structured_summary = str(structured.get("summary_markdown") or "").strip()
+                structured_details = str(structured.get("details_markdown") or "").strip()
+                lines = lines[1:]
+        except json.JSONDecodeError:
+            pass
     visible_lines = []
     closing_lines = []
     plot_urls = []
@@ -86,9 +97,13 @@ def _parse_agent_content(content: str) -> dict:
 
         visible_lines.append(line)
 
+    fallback_visible = "\n".join(visible_lines).strip()
+    summary_text = structured_summary or fallback_visible
     return {
         "content": content,
-        "visibleText": "\n".join(visible_lines).strip(),
+        "visibleText": summary_text,
+        "summaryText": summary_text,
+        "detailsText": structured_details,
         "closingText": "\n".join(closing_lines).strip(),
         "plotUrls": plot_urls,
     }
@@ -141,6 +156,11 @@ def _init_conversation_tables():
                 FOREIGN KEY (conversation_id) REFERENCES conversations(id)
             )
         """)
+        columns = {row[1] for row in conn.execute("PRAGMA table_info(conversation_messages)").fetchall()}
+        if "summary_text" not in columns:
+            conn.execute("ALTER TABLE conversation_messages ADD COLUMN summary_text TEXT")
+        if "details_text" not in columns:
+            conn.execute("ALTER TABLE conversation_messages ADD COLUMN details_text TEXT")
         conn.commit()
 
 
@@ -193,11 +213,31 @@ def _get_conversation_title(cid: str) -> str:
     return row[0] if row and row[0] else ""
 
 
-def _save_message(cid: str, role: str, content: str, visible_text: str, closing_text: str, plot_urls: list):
+def _save_message(
+    cid: str,
+    role: str,
+    content: str,
+    visible_text: str,
+    closing_text: str,
+    plot_urls: list,
+    summary_text: str = "",
+    details_text: str = "",
+):
     with _db() as conn:
         conn.execute(
-            "INSERT INTO conversation_messages (id, conversation_id, role, content, visible_text, closing_text, plot_urls, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-            (str(uuid.uuid4()), cid, role, content, visible_text, closing_text, json.dumps(plot_urls), _now_iso()),
+            "INSERT INTO conversation_messages (id, conversation_id, role, content, visible_text, summary_text, details_text, closing_text, plot_urls, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                str(uuid.uuid4()),
+                cid,
+                role,
+                content,
+                visible_text,
+                summary_text or visible_text,
+                details_text,
+                closing_text,
+                json.dumps(plot_urls),
+                _now_iso(),
+            ),
         )
         conn.commit()
 
@@ -222,15 +262,25 @@ def _get_conversation_messages(cid: str) -> list:
     with _db() as conn:
         conn.row_factory = sqlite3.Row
         rows = conn.execute(
-            "SELECT id, role, content, visible_text, closing_text, plot_urls, created_at FROM conversation_messages WHERE conversation_id = ? ORDER BY created_at ASC",
+            "SELECT id, role, content, visible_text, summary_text, details_text, closing_text, plot_urls, created_at FROM conversation_messages WHERE conversation_id = ? ORDER BY created_at ASC",
             (cid,),
         ).fetchall()
     result = []
     for r in rows:
         msg = dict(r)
+        msg["summary_text"] = msg.get("summary_text") or msg.get("visible_text") or ""
+        msg["details_text"] = msg.get("details_text") or ""
         msg["plot_urls"] = json.loads(msg.get("plot_urls") or "[]")
         result.append(msg)
     return result
+
+
+def _message_history_content(message: dict) -> str:
+    summary = message.get("summary_text") or message.get("visible_text") or message.get("content") or ""
+    details = message.get("details_text") or ""
+    if details and message.get("role") == "assistant":
+        return f"{summary}\n\nDetailed analysis:\n{details}"
+    return summary
 
 
 def _get_orders_growth_tile(division: str) -> dict:
@@ -711,7 +761,15 @@ def _generate_pdf(cid: str) -> bytes:
 
     # Messages
     for msg in messages:
-        text = msg.get("visible_text") or ""
+        summary_text = msg.get("summary_text") or msg.get("visible_text") or ""
+        details_text = msg.get("details_text") or ""
+        if msg.get("role") == "assistant" and details_text:
+            text = (
+                f"**Executive Summary:**\n{summary_text}\n\n"
+                f"**Detailed Analysis:**\n{details_text}"
+            )
+        else:
+            text = summary_text
         if msg.get("closing_text"):
             text += "\n" + msg["closing_text"]
         if not text.strip():
@@ -903,7 +961,7 @@ class BubuRequestHandler(BaseHTTPRequestHandler):
                 _save_message(conversation_id, "user", message, message, "", [])
 
                 history = [
-                    {"role": m["role"], "content": m.get("visible_text") or m.get("content") or ""}
+                    {"role": m["role"], "content": _message_history_content(m)}
                     for m in _get_conversation_messages(conversation_id)
                     if m["role"] in ("user", "assistant")
                 ]
@@ -922,6 +980,8 @@ class BubuRequestHandler(BaseHTTPRequestHandler):
                     parsed_result = {
                         "content": "",
                         "visibleText": "I could not complete that request.",
+                        "summaryText": "I could not complete that request.",
+                        "detailsText": "",
                         "closingText": "",
                         "plotUrls": [],
                     }
@@ -934,12 +994,14 @@ class BubuRequestHandler(BaseHTTPRequestHandler):
                     parsed_result.get("visibleText", ""),
                     parsed_result.get("closingText", ""),
                     parsed_result.get("plotUrls", []),
+                    summary_text=parsed_result.get("summaryText", ""),
+                    details_text=parsed_result.get("detailsText", ""),
                 )
                 _touch_conversation(conversation_id)
                 return
 
             db_history = [
-                {"role": m["role"], "content": m.get("visible_text") or m.get("content") or ""}
+                {"role": m["role"], "content": _message_history_content(m)}
                 for m in (_get_conversation_messages(conversation_id) if conversation_id else [])
                 if m["role"] in ("user", "assistant")
             ]
@@ -962,6 +1024,8 @@ class BubuRequestHandler(BaseHTTPRequestHandler):
                 {
                     "content": "",
                     "visibleText": f"I ran into an error while processing that request. Details: {exc}",
+                    "summaryText": f"I ran into an error while processing that request. Details: {exc}",
+                    "detailsText": "",
                     "closingText": "",
                     "plotUrls": [],
                 },

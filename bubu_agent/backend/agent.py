@@ -53,6 +53,11 @@ class PlotSpec(BaseModel):
     colors: Optional[List[str]] = None  # user-specified colors; None = use defaults
 
 
+class SummarizedResponse(BaseModel):
+    summary_markdown: str
+    details_markdown: str
+
+
 def set_trace_callback(callback):
     global TRACE_CALLBACK
     TRACE_CALLBACK = callback
@@ -1309,16 +1314,32 @@ def _to_langchain_messages(history):
 
 
 def build_summarization_prompt() -> str:
-    return """You are a business intelligence summarization assistant. Your output is rendered as Markdown in a UI — formatting will be visible to the user.
+    return """You are a business intelligence summarization assistant. Return two Markdown fields through the provided structured-output schema:
+- summary_markdown: the concise executive answer shown by default beside a chart.
+- details_markdown: the complete supporting analysis shown only when the user opens the Details tab.
 
-STRICT FORMATTING RULES — you MUST follow exactly:
+MARKDOWN FORMATTING RULES — apply to BOTH fields:
 1. Wrap ALL numbers, dollar amounts, percentages, and named metrics in **double asterisks** so they appear bold. Example: **$722.2M**, **+34%**, **ELSP**, **Q1 2024**.
 2. Always prefix growth/positive values with `+` and declines with `-` and wrap in bold. Example: **+34%**, **-7.2%**.
 3. Start every section with a **bold heading** followed by a colon. Example: **Key Findings:**
 4. Use bullet points (`-`) for every data point or finding. Do not write long prose paragraphs.
 5. End with a bold one-line summary. Example: **Overall, ELSP orders grew +34% from 2021 to 2025.**
 
-EXAMPLE of correct output format:
+SUMMARY_MARKDOWN RULES:
+- Maximum 120 words.
+- Use no more than 5 bullets.
+- State the primary conclusion first.
+- Include only the most decision-relevant drivers and quantified impacts.
+- Do not include methodology, exhaustive rows, or repeated conclusions.
+- The summary must fit comfortably beside a chart without scrolling.
+
+DETAILS_MARKDOWN RULES:
+- Give the complete supporting analysis requested by the user.
+- Include driver-by-driver evidence, period comparisons, offsets, historical context, and caveats when supported by the source data.
+- Do not merely repeat summary_markdown; expand it with supporting evidence.
+- For time-series or row-level data requests, include the useful detailed values requested by the user.
+
+EXAMPLE of correct Markdown within either field:
 **Overview:**
 - Start value: **$722.2M** in **Jan 2021**
 - End value: **$964.7M** in **Feb 2025**
@@ -1541,6 +1562,7 @@ class BubuAgent:
         if self.llm is None:
             raise RuntimeError("OPENAI_API_KEY is required to run the agent.")
         self.llm_with_tools = self.llm.bind_tools(TOOLS)
+        self.summarizer_llm = self.llm.with_structured_output(SummarizedResponse)
         self.graph = self._build_graph()
 
     def _build_graph(self):
@@ -1652,11 +1674,12 @@ class BubuAgent:
         summarization_input += f"User question: {user_question}\n\nTool results:\n{tool_data_str}"
 
         _emit_step("Summarization", "Generating final summary.")
-        response = self.llm.invoke([
+        response = self.summarizer_llm.invoke([
             SystemMessage(content=build_summarization_prompt()),
             HumanMessage(content=summarization_input),
         ])
-        return {"messages": [response]}
+        content = json.dumps(response.model_dump(), ensure_ascii=False)
+        return {"messages": [AIMessage(content=content)]}
 
     def _emit_graph_update(self, update: dict):
         for node_name, node_update in update.items():

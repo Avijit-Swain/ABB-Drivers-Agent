@@ -938,6 +938,7 @@ textarea {
 .showcase-grid {
   display: grid;
   grid-template-columns: minmax(0, 1.62fr) minmax(290px, 0.88fr);
+  grid-template-rows: minmax(320px, 390px);
   gap: 0.9rem;
   margin-top: 0.7rem;
   align-items: stretch;
@@ -945,6 +946,7 @@ textarea {
 
 .plot-card,
 .takeaway-card {
+  min-height: 0;
   border: 1px solid #e2e8f2;
   border-radius: 11px;
   background: linear-gradient(180deg, #ffffff 0%, #fbfcff 100%);
@@ -968,14 +970,110 @@ textarea {
 .plot-card img {
   display: block;
   width: 100%;
-  max-height: 360px;
+  height: 100%;
+  max-height: none;
   object-fit: contain;
   border-radius: 8px;
+}
+
+.plot-card {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
 }
 
 .takeaway-card {
   display: flex;
   flex-direction: column;
+  overflow: hidden;
+}
+
+.response-tabs {
+  min-width: 0;
+}
+
+.plot-response-tabs {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.response-tab-list {
+  display: flex;
+  align-items: center;
+  gap: 0.2rem;
+  flex-shrink: 0;
+  margin-bottom: 0.72rem;
+  padding-bottom: 0.45rem;
+  border-bottom: 1px solid #e8edf5;
+}
+
+.response-tab {
+  appearance: none;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #667085;
+  padding: 0.42rem 0.68rem;
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 760;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.response-tab:hover {
+  background: #f5f7fb;
+  color: #344054;
+}
+
+.response-tab.active {
+  background: #fff0f1;
+  color: #c9000c;
+  box-shadow: inset 0 0 0 1px rgba(255, 0, 15, 0.12);
+}
+
+.response-tab:focus-visible {
+  outline: 2px solid rgba(255, 0, 15, 0.25);
+  outline-offset: 2px;
+}
+
+.response-tab-panel {
+  min-width: 0;
+}
+
+.plot-response-tabs .response-tab-panel {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding-right: 0.35rem;
+  scrollbar-width: thin;
+  scrollbar-color: #c9d2e1 transparent;
+}
+
+.legacy-response-panel {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding-right: 0.35rem;
+  scrollbar-width: thin;
+  scrollbar-color: #c9d2e1 transparent;
+}
+
+.plot-response-tabs .response-tab-panel::-webkit-scrollbar {
+  width: 5px;
+}
+
+.plot-response-tabs .response-tab-panel::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: #c9d2e1;
+}
+
+.message-text + .response-tabs,
+.response-tabs + .closing-text {
+  margin-top: 0.45rem;
 }
 
 .takeaway-row {
@@ -1675,6 +1773,17 @@ textarea {
   }
   .showcase-grid {
     grid-template-columns: 1fr;
+    grid-template-rows: auto;
+  }
+  .plot-card {
+    min-height: 280px;
+  }
+  .plot-card img {
+    height: auto;
+    max-height: 360px;
+  }
+  .takeaway-card {
+    max-height: 390px;
   }
   .chat-panel {
     padding: 0.75rem 0.8rem;
@@ -1691,6 +1800,7 @@ textarea {
   }
   .showcase-grid {
     grid-template-columns: 1fr;
+    grid-template-rows: auto;
   }
 }
 
@@ -1704,5 +1814,6 @@ textarea {
   }
   .showcase-grid {
     grid-template-columns: 1fr;
+    grid-template-rows: auto;
   }
 }

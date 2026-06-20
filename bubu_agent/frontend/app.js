@@ -731,7 +731,63 @@ function MarkdownContent({ text, className }) {
   });
 }
 
-function StructuredResultCard({ visibleText, plotUrls }) {
+function ResponseTabs({ summaryText, detailsText, plotMode = false }) {
+  const [activeTab, setActiveTab] = useState("summary");
+  const hasDetails = Boolean((detailsText || "").trim());
+  const activeText = activeTab === "details" && hasDetails ? detailsText : summaryText;
+
+  if (!hasDetails) {
+    return h(
+      "div",
+      { className: plotMode ? "response-tab-panel legacy-response-panel" : "" },
+      h(MarkdownContent, {
+        text: summaryText,
+        className: `${plotMode ? "takeaway-para" : "message-text"} md-content`,
+      })
+    );
+  }
+
+  return h(
+    "div",
+    { className: `response-tabs${plotMode ? " plot-response-tabs" : ""}` },
+    h(
+      "div",
+      { className: "response-tab-list", role: "tablist", "aria-label": "Response detail level" },
+      h(
+        "button",
+        {
+          type: "button",
+          role: "tab",
+          className: `response-tab${activeTab === "summary" ? " active" : ""}`,
+          "aria-selected": activeTab === "summary",
+          onClick: () => setActiveTab("summary"),
+        },
+        "Summary"
+      ),
+      h(
+        "button",
+        {
+          type: "button",
+          role: "tab",
+          className: `response-tab${activeTab === "details" ? " active" : ""}`,
+          "aria-selected": activeTab === "details",
+          onClick: () => setActiveTab("details"),
+        },
+        "Details"
+      )
+    ),
+    h(
+      "div",
+      { className: `response-tab-panel${activeTab === "details" ? " details-panel" : ""}`, role: "tabpanel" },
+      h(MarkdownContent, {
+        text: activeText,
+        className: `${plotMode ? "takeaway-para" : "message-text"} md-content`,
+      })
+    )
+  );
+}
+
+function StructuredResultCard({ summaryText, detailsText, plotUrls }) {
   return h(
     "div",
     { className: "showcase-grid" },
@@ -739,14 +795,13 @@ function StructuredResultCard({ visibleText, plotUrls }) {
       "div",
       { className: "plot-card" },
       plotUrls.map((url) =>
-        h("img", { key: url, src: `${url}?t=${Date.now()}`, alt: "Generated plot" })
+        h("img", { key: url, src: url, alt: "Generated plot" })
       )
     ),
     h(
       "div",
       { className: "takeaway-card" },
-      h("div", { className: "card-title" }, "Key Takeaways"),
-      h(MarkdownContent, { text: visibleText, className: "takeaway-para md-content" })
+      h(ResponseTabs, { summaryText, detailsText, plotMode: true })
     )
   );
 }
@@ -769,11 +824,18 @@ function Message({ message }) {
       ),
       !isUser && message.statusText && h("div", { className: "live-status" }, h("span", null), message.statusText),
       !isUser && !hasPlots && message.visibleText &&
-        h(MarkdownContent, { text: message.visibleText, className: "message-text md-content" }),
+        h(ResponseTabs, {
+          summaryText: message.summaryText || message.visibleText,
+          detailsText: message.detailsText || "",
+        }),
       message.showcase
         ? h(ShowcasePlot, null)
         : hasPlots
-          ? h(StructuredResultCard, { visibleText: message.visibleText, plotUrls: message.plotUrls })
+          ? h(StructuredResultCard, {
+              summaryText: message.summaryText || message.visibleText,
+              detailsText: message.detailsText || "",
+              plotUrls: message.plotUrls,
+            })
           : null,
       !hasPlots && message.closingText && h("div", { className: "closing-text" }, message.closingText)
     )
@@ -970,6 +1032,8 @@ function App() {
         role: msg.role,
         content: msg.content,
         visibleText: msg.visible_text,
+        summaryText: msg.summary_text || msg.visible_text || "",
+        detailsText: msg.details_text || "",
         closingText: msg.closing_text,
         plotUrls: msg.plot_urls || [],
       }));
@@ -1004,13 +1068,24 @@ function App() {
   }, [messages, isWorking]);
 
   async function sendMessage(prompt) {
-    const userMessage = { id: `user-${Date.now()}`, role: "user", visibleText: prompt, content: prompt, plotUrls: [], closingText: "" };
+    const userMessage = {
+      id: `user-${Date.now()}`,
+      role: "user",
+      visibleText: prompt,
+      summaryText: prompt,
+      detailsText: "",
+      content: prompt,
+      plotUrls: [],
+      closingText: "",
+    };
     const assistantId = `assistant-${Date.now()}`;
     const assistantMessage = {
       id: assistantId,
       role: "assistant",
       content: "",
       visibleText: "",
+      summaryText: "",
+      detailsText: "",
       closingText: "",
       plotUrls: [],
       statusText: "Working on it",
@@ -1077,6 +1152,8 @@ function App() {
         if (event.type === "error") {
           updateAssistant(() => ({
             visibleText: event.message || "I ran into an error while processing that request.",
+            summaryText: event.message || "I ran into an error while processing that request.",
+            detailsText: "",
             closingText: "",
             plotUrls: [],
             statusText: "",
@@ -1101,7 +1178,8 @@ function App() {
       }
 
       if (pendingFinal) {
-        const finalVisibleText = pendingFinal.visibleText || "";
+        const finalVisibleText = pendingFinal.summaryText || pendingFinal.visibleText || "";
+        const finalDetailsText = pendingFinal.detailsText || "";
         const finalPlotUrls = pendingFinal.plotUrls || [];
         const isStructured = finalPlotUrls.length > 0;
 
@@ -1110,6 +1188,8 @@ function App() {
           updateAssistant(() => ({
             content: pendingFinal.content || "",
             visibleText: "",
+            summaryText: "",
+            detailsText: finalDetailsText,
             closingText: "",
             plotUrls: finalPlotUrls,
             statusText: "",
@@ -1118,12 +1198,15 @@ function App() {
             const suffix = index === words.length - 1 ? "" : " ";
             updateAssistant((message) => ({
               visibleText: `${message.visibleText || ""}${words[index]}${suffix}`,
+              summaryText: `${message.summaryText || ""}${words[index]}${suffix}`,
             }));
             await sleep(30);
           }
           updateAssistant(() => ({
             content: pendingFinal.content || "",
             visibleText: finalVisibleText,
+            summaryText: finalVisibleText,
+            detailsText: finalDetailsText,
             closingText: pendingFinal.closingText || "",
             plotUrls: finalPlotUrls,
             statusText: "",
@@ -1133,6 +1216,8 @@ function App() {
           updateAssistant(() => ({
             content: pendingFinal.content || "",
             visibleText: "",
+            summaryText: "",
+            detailsText: finalDetailsText,
             closingText: "",
             plotUrls: [],
             statusText: "",
@@ -1142,6 +1227,7 @@ function App() {
             const suffix = index === words.length - 1 ? "" : " ";
             updateAssistant((message) => ({
               visibleText: `${message.visibleText || ""}${words[index]}${suffix}`,
+              summaryText: `${message.summaryText || ""}${words[index]}${suffix}`,
             }));
             await sleep(30);
           }
@@ -1149,6 +1235,8 @@ function App() {
           updateAssistant(() => ({
             content: pendingFinal.content || "",
             visibleText: finalVisibleText,
+            summaryText: finalVisibleText,
+            detailsText: finalDetailsText,
             closingText: pendingFinal.closingText || "",
             plotUrls: [],
             statusText: "",
@@ -1158,6 +1246,8 @@ function App() {
     } catch (error) {
       updateAssistant(() => ({
           visibleText: `I ran into an error while processing that request. Details: ${error.message}`,
+          summaryText: `I ran into an error while processing that request. Details: ${error.message}`,
+          detailsText: "",
           closingText: "",
           plotUrls: [],
           statusText: "",
