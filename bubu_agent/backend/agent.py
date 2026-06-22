@@ -425,6 +425,8 @@ Rules:
 - For Monthly_Data time filtering or ordering, use date.
 - If the user asks for highest, lowest, top, or bottom, ORDER BY the relevant numeric column.
 - For plot data, return simple columns that can be plotted, ideally label/value or date/value.
+- For questions asking each driver's contribution, share of growth, or whether growth was broad-based versus concentrated using Driver_Contribution_KB, SELECT selected_driver_name and contribution_pct. Order by contribution_pct DESC. contribution_pct is the correct column for quantifying how much of the total movement each driver explains.
+- For questions specifically asking for additive growth impact, impact decomposition, or a bridge in growth-percentage points, SELECT selected_driver_name and impact_pct_current. Order by ABS(impact_pct_current) DESC.
 - CRITICAL: If the user asks to compare BOTH divisions (mentions ELSP and ELSB together), write ONE single query with NO division WHERE filter. Always include the `division` column in SELECT so both divisions are returned together. Use LIMIT 120 for Monthly_Data comparisons. Example: SELECT date, division, orders_received_net_musd FROM Monthly_Data ORDER BY date LIMIT 120
 - If only one division is mentioned, filter with LOWER(division) = LOWER('ELSP') or LOWER('ELSB') and LIMIT 50.
 """
@@ -432,6 +434,39 @@ Rules:
     try:
         response = llm.invoke([SystemMessage(content=prompt), HumanMessage(content=question_part)])
         sql = _parse_json_response(response.content)["sql"].strip()
+
+        # Contribution/breadth questions require the share-of-growth metric.
+        # Keep the LLM-generated SQL path, but correct this semantic mismatch
+        # deterministically when the model selects an impact column instead.
+        normalized_question = question_part.lower()
+        contribution_share_request = (
+            table_name == "Driver_Contribution_KB"
+            and any(
+                term in normalized_question
+                for term in (
+                    "contribution",
+                    "broad based",
+                    "broad-based",
+                    "dependent on only a few",
+                    "concentrated",
+                )
+            )
+        )
+        if contribution_share_request:
+            division = next(
+                (candidate for candidate in ("ELSP", "ELSB", "ELDS") if candidate.lower() in normalized_question),
+                None,
+            )
+            where_clause = (
+                f" WHERE LOWER(division) = LOWER('{division}')"
+                if division
+                else ""
+            )
+            sql = (
+                "SELECT selected_driver_name, contribution_pct "
+                f"FROM Driver_Contribution_KB{where_clause} "
+                "ORDER BY contribution_pct DESC LIMIT 50"
+            )
         _validate_select_sql(sql)
         _emit_step("SQL generated", sql[:260])
         return sql
@@ -591,8 +626,38 @@ def structured_data_tool(question: str) -> str:
             cid = _CURRENT_CID.get("value", "unknown")
             ts = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
             csv_path = STRUCTURED_RESULTS_DIR / f"{cid}_{ts}.csv"
+            normalized_question = question.lower()
+            contribution_request = any(
+                term in normalized_question
+                for term in (
+                    "what drove",
+                    "drove this",
+                    "driver contribution",
+                    "driver's contribution",
+                    "drivers' contribution",
+                    "growth breakdown",
+                    "impact breakdown",
+                    "broad based",
+                    "broad-based",
+                    "decomposition",
+                    "bridge",
+                    "waterfall",
+                )
+            )
+            time_series_request = any(
+                term in normalized_question
+                for term in ("monthly", "trend", "over time", "time series", "historical")
+            )
+            preferred_tables = []
+            if contribution_request:
+                preferred_tables.append("Driver_Contribution_KB")
+            elif time_series_request:
+                preferred_tables.append("Monthly_Data")
+            preferred_tables.extend(table for table in final_rows if table not in preferred_tables)
+
             rows_to_save = []
-            for table_rows in final_rows.values():
+            for table_name in preferred_tables:
+                table_rows = final_rows.get(table_name, [])
                 if isinstance(table_rows, list) and table_rows:
                     rows_to_save = table_rows
                     break
@@ -619,9 +684,11 @@ def unstructured_kpi_tool(question: str) -> str:
     - Comparing two drivers for selection reasoning
     - Signal strength, business relevance, incremental fit, collinearity risk of a driver
     - Which drivers were evaluated but not selected for a division
+    - The documented oil-price/Middle East conflict impact scenario for ELDS orders
 
     Do NOT use it for: selected driver lists with elasticities/ranges, forecasts,
-    contribution percentages, impact MUSD, monthly data, or numeric structured lookups.
+    contribution percentages, impact MUSD, monthly data, or numeric structured lookups,
+    except for the explicitly documented ELDS oil-price demo scenario.
     """
     _emit_step("Unstructured KPI tool", "Reading KPI definition text.")
     content = KPI_DEFINITIONS_FALLBACK
@@ -642,7 +709,10 @@ Rules:
 - For driver evaluation or driver-selection feedback questions, use exact or very close driver-name matches from the evaluation section. Do not substitute related KPIs. For example, "China PPI" is not the same as "China IIP" or "Europe Producer Price Index", and "India GDP" is not the same as "US GDP" or "China GDP".
 - If the user asks whether a driver was evaluated and that exact/very-close driver name is not present in the evaluation section for the requested division, return status "answer_not_found" and state that the driver was not found as an evaluated driver in the available knowledge.
 - Do not answer selected drivers, elasticity, ranges, forecasts, contribution,
-  monthly trends, or numeric lookup questions from this file.
+  monthly trends, or numeric lookup questions from this file, except for a demo
+  scenario explicitly documented in the text. For that scenario, answer only
+  with the supplied content and include the bottom line, why it happens, all
+  bull/base/bear values, confidence, what to watch, and illustrative-data caveat.
 - Return concise JSON:
 {{
   "status": "success" | "answer_not_found" | "clarification_needed",
@@ -974,10 +1044,17 @@ def _plot_waterfall(df, x_col: str, value_col: str, title: str, x_label: str, y_
     if n < 2:
         return _plot_bar(df, x_col, [value_col], title, x_label, y_label)
 
-    vals = df[value_col].tolist()
-    labels = df[x_col].tolist()
-    measure = ["relative"] * n
-    text_vals = [f"+{v:,.1f}" if v >= 0 else f"{v:,.1f}" for v in vals]
+    driver_rows = [
+        (str(label), float(value))
+        for label, value in zip(df[x_col].tolist(), df[value_col].tolist())
+        if not any(term in str(label).lower() for term in ("total", "final", "net growth"))
+    ]
+    labels = [label for label, _ in driver_rows]
+    vals = [value for _, value in driver_rows]
+    measure = ["relative"] * len(driver_rows)
+
+    value_suffix = "%" if "pct" in value_col.lower() or "%" in y_label else ""
+    text_vals = [f"{value:+,.2f}{value_suffix}" for value in vals]
 
     fig = go.Figure(go.Waterfall(
         orientation="v",
@@ -994,6 +1071,10 @@ def _plot_waterfall(df, x_col: str, value_col: str, title: str, x_label: str, y_
         cliponaxis=False,
     ))
     _abb_layout(fig, title, x_label, y_label)
+    fig.update_layout(
+        margin=dict(l=80, r=45, t=75, b=135),
+        xaxis=dict(tickangle=-24, automargin=True),
+    )
     return fig
 
 
@@ -1128,9 +1209,9 @@ Chart type rules — pick exactly one:
 - dual_axis_line: exactly two series with very different scales (e.g. orders in MUSD vs an index value). First series → left y-axis (y_label), second series → right y-axis (y2_label). y_cols must have exactly 2 columns.
 - bar: grouped categorical comparison (multiple y_cols = grouped bars side by side). Use for rankings or comparing 2-3 divisions/scenarios.
 - bar_horizontal: horizontal bar chart. Use when x-axis labels are long (driver names, division names) or when ranking many items. Single y_col only. Sorted ascending.
-- bar_colored: vertical bar chart where positive values are green and negative values are red. Use for driver impacts, contributions, or any mix of positive/negative values.
+- bar_colored: vertical bar chart where positive values are green and negative values are red. Use for independent positive/negative comparisons that are not an additive bridge.
 - bar_stacked: stacked bar chart. Use when showing composition or parts of a whole across categories. Multiple y_cols stacked.
-- waterfall: bridge/decomposition chart. Use for contribution breakdown (baseline → driver deltas → total). Needs >= 3 rows. Exactly one y_col.
+- waterfall: bridge/decomposition chart. MANDATORY for questions asking what drove growth/decline, each driver's contribution, growth attribution, impact decomposition, bridge analysis, or whether movement was broad-based versus concentrated. Use the driver-name column as x_col. For contribution-share or broad-based-versus-concentrated questions, use contribution_pct as the single y_col. Use impact_pct_current only when the user specifically asks for additive impact in growth-percentage points. Plot only the individual drivers; do not add a final total bar. Needs >= 3 driver rows.
 
 Column mapping rules:
 - x_col: category or time axis column name (must exist in columns above)
@@ -1180,6 +1261,40 @@ def _run_plotly_pipeline(plot_request: str, csv_path: str) -> str:
         spec = _get_plot_spec(plot_request, df)
     except Exception as exc:
         return json.dumps({"status": "error", "message": f"Chart spec generation failed: {exc}"})
+    # Driver-attribution questions must use an additive waterfall regardless of
+    # stylistic chart choices made by the plotting LLM.
+    normalized_request = plot_request.lower()
+    contribution_request = (
+        any(term in normalized_request for term in ("what drove", "drove this", "driver contribution", "driver's contribution", "drivers' contribution", "growth breakdown", "impact breakdown", "broad based", "broad-based", "decomposition", "bridge", "waterfall"))
+        and any(term in normalized_request for term in ("driver", "growth", "decline", "contribution", "impact"))
+    )
+    driver_col = next((col for col in ("selected_driver_name", "driver_name", "driver", "label") if col in df.columns), None)
+    share_request = any(
+        term in normalized_request
+        for term in ("contribution", "broad based", "broad-based", "dependent on only a few", "concentrated")
+    )
+    metric_candidates = (
+        ("contribution_pct", "impact_pct_current", "impact_musd_current")
+        if share_request
+        else ("impact_pct_current", "impact_musd_current", "contribution_pct")
+    )
+    metric_col = next((col for col in metric_candidates if col in df.columns), None)
+    if contribution_request and driver_col and metric_col and len(df) >= 3:
+        if metric_col == "contribution_pct":
+            unit = "Contribution to total growth (%)"
+        elif metric_col == "impact_pct_current":
+            unit = "Growth impact (%)"
+        else:
+            unit = "Impact (MUSD)"
+        spec = PlotSpec(
+            chart_type="waterfall",
+            x_col=driver_col,
+            y_cols=[metric_col],
+            title="Driver Contribution to Order Growth",
+            x_label="Driver",
+            y_label=unit,
+        )
+
     # Validate columns exist
     if spec.x_col not in df.columns:
         spec.x_col = df.columns[0]
@@ -1361,6 +1476,7 @@ Content rules:
 - For time-series: include start value, end value, total growth %, and year-by-year highlights.
 - For simulation: state the result clearly with the computed number. Do not mention alpha.
 - For KPI definitions: use bullets for each concept.
+- For the documented ELDS oil-price demo scenario, preserve all source-backed elements across summary_markdown and details_markdown: bottom line, why it happens, bull/base/bear values, confidence, what to watch, and the illustrative-output caveat. Do not omit or reinterpret these supplied figures.
 - For driver-selection feedback where the user expected one or more drivers to be included:
   - If the provided data says a named driver was not evaluated or not found in the evaluation knowledge, you MUST ask for the data source for that specific driver.
   - Also say: "Thank you for the feedback. I have noted this, and our team will look into it and get back to you."
@@ -1413,6 +1529,7 @@ Use this for KPI definition and concept questions, AND for driver selection reas
 - comparing two drivers for a given division
 - signal strength or business relevance of a driver
 - driver evaluation and selection reasoning
+- the documented effect of an oil-price spike or escalating Middle East conflict on ELDS orders over the next two quarters
 
 Examples (KPI definitions):
 - What does Data Center mean?
@@ -1439,6 +1556,9 @@ Answer: Call unstructured_kpi_tool. The tool will return: it had some relevance 
 
 User: Compare US GDP vs Data Center for ELSP.
 Answer: Call unstructured_kpi_tool. The tool will return the evaluation entries for both, so you can compare their signal strength, business relevance, and selection outcome for ELSP.
+
+User: Oil prices have risen 35% due to the escalating Middle East conflict — how will this affect ELDS orders over the next two quarters?
+Answer: Call unstructured_kpi_tool. This is a documented demo scenario in the unstructured knowledge. Use its supplied bull, base, and bear impacts, reasoning, confidence, and illustrative-data caveat. Do not route this scenario to structured_data_tool or simulation_tool.
 
 3. plot_tool
 Use this only when the user explicitly asks for:
